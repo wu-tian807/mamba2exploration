@@ -149,15 +149,31 @@ def build_dataloader(
 ) -> DataLoader:
     """
     完整的数据管道: 读取语料 -> 分词 -> 切块 -> DataLoader
+    支持大文件分块读取，避免 OOM。
     """
     tokenizer = load_tokenizer(tokenizer_path)
 
     print(f"正在对语料进行分词: {corpus_file}")
-    with open(corpus_file, "r", encoding="utf-8") as f:
-        text = f.read()
+    file_size = os.path.getsize(corpus_file)
 
-    encoded = tokenizer.encode(text)
-    token_ids = encoded.ids
+    if file_size > 50 * 1024 * 1024:  # > 50MB 用分块读取
+        print(f"  大文件模式 ({file_size/1e6:.0f} MB), 分块读取...")
+        token_ids = []
+        with open(corpus_file, "r", encoding="utf-8") as f:
+            while True:
+                chunk = f.read(2 * 1024 * 1024)  # 2MB chunks
+                if not chunk:
+                    break
+                encoded = tokenizer.encode(chunk)
+                token_ids.extend(encoded.ids)
+                if len(token_ids) % 1000000 < 50000:
+                    print(f"    已分词 {len(token_ids):,} tokens...")
+    else:
+        with open(corpus_file, "r", encoding="utf-8") as f:
+            text = f.read()
+        encoded = tokenizer.encode(text)
+        token_ids = encoded.ids
+
     print(f"  总 token 数: {len(token_ids):,}")
     print(f"  序列长度: {seq_len}")
     print(f"  训练样本数: {len(token_ids) // seq_len:,}")

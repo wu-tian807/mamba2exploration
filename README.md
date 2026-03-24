@@ -11,9 +11,11 @@
 | 词表大小 | 32,000 (自训练 BPE) |
 | 模型维度 | d_model=768, n_layer=16 |
 | SSM 隐状态 | d_state=64 |
-| 训练数据 | TinyStoryInChinese (~19K 中文故事) |
+| 训练数据 | TinyStoryInChinese (~219K 中文故事, 165MB, 2450万 tokens) |
 | GPU | NVIDIA RTX 4090D |
-| 训练用时 | ~7 分钟 (5000 步) |
+| 训练用时 | ~35 分钟 (10000 步, batch=8, seq=2048) |
+| 最终 Loss | 3.75 (从 163.7 下降 97.7%) |
+| 训练速度 | ~81K tokens/s |
 
 ## 参数分配
 
@@ -83,14 +85,15 @@ pip install datasets matplotlib tokenizers tqdm
 # 1. 准备数据 + 训练分词器
 python prepare_data.py --action all
 
-# 2. 开始训练
-python train.py --seq_len 1024 --batch_size 4 --max_steps 5000
+# 2. 开始训练 (大语料)
+python train.py --corpus data/corpus_large.txt --seq_len 2048 --batch_size 8 --max_steps 10000
 
 # 3. 生成文本
 python generate.py --prompt "从前有一个小女孩"
 
 # 4. 交互模式
-python generate.py --interactive
+bash chat.sh
+# 或 python generate.py --interactive --checkpoint checkpoints/final.pt
 
 # 5. 动态学习观测
 python generate.py --prompt "从前" --observe

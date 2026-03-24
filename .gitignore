@@ -11,6 +11,9 @@ build/
 # 中间 checkpoint 文件太大, 只保留 final.pt
 checkpoints/step_*.pt
 
+# 大语料文件 (165MB+, 可通过脚本重新生成)
+data/corpus_large.txt
+
 # 环境
 .env
 *.egg
