@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+*.so
+*.o
+
+# 中间 checkpoint 文件太大, 只保留 final.pt
+checkpoints/step_*.pt
+
+# 环境
+.env
+*.egg
+*.parquet
