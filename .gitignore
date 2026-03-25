@@ -13,8 +13,10 @@ checkpoints/step_*.pt
 
 # 大语料文件 (165MB+, 可通过脚本重新生成)
 data/corpus_large.txt
+data/corpus_v3.txt
 
 # 环境
 .env
 *.egg
 *.parquet
+checkpoints/final_v2_83M.pt

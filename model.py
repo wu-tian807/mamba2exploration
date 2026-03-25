@@ -105,8 +105,8 @@ class Mamba2LM(nn.Module):
         }
 
 
-def build_model(vocab_size: int = 32000, device: str = "cuda") -> Mamba2LM:
-    model = Mamba2LM(vocab_size=vocab_size)
+def build_model(vocab_size: int = 32000, d_model: int = 768, n_layer: int = 16, device: str = "cuda") -> Mamba2LM:
+    model = Mamba2LM(vocab_size=vocab_size, d_model=d_model, n_layer=n_layer)
     print("\n=== Mamba-2 LM 参数分配 ===")
     for k, v in model.count_parameters().items():
         if isinstance(v, int):

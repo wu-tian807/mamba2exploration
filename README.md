@@ -7,22 +7,22 @@
 | 参数 | 值 |
 |------|------|
 | 架构 | Mamba-2 (SSD) |
-| 参数量 | 83.2M |
+| 参数量 | 240M |
 | 词表大小 | 32,000 (自训练 BPE) |
-| 模型维度 | d_model=768, n_layer=16 |
+| 模型维度 | d_model=1024, n_layer=32 |
 | SSM 隐状态 | d_state=64 |
-| 训练数据 | TinyStoryInChinese (~219K 中文故事, 165MB, 2450万 tokens) |
+| 训练数据 | TinyStoryInChinese (~519K 中文故事, 391MB, 5800万 tokens) |
 | GPU | NVIDIA RTX 4090D |
-| 训练用时 | ~35 分钟 (10000 步, batch=8, seq=2048) |
-| 最终 Loss | 3.75 (从 163.7 下降 97.7%) |
-| 训练速度 | ~81K tokens/s |
+| 训练用时 | ~3.5 小时 (15000 步, batch=8, seq=2048) |
+| 最终 Loss | 3.09 (从 163.8 下降 98.1%) |
+| 训练速度 | ~20K tokens/s |
 
 ## 参数分配
 
 ```
-Embedding: 24.6M (29.5%) — 词表 "字典"
-Mamba 层:  58.6M (70.5%) — 动态学习核心
-其他:       0.01M         — LayerNorm
+Embedding: 32.8M (13.7%) — 词表 "字典"
+Mamba 层: 207.0M (86.3%) — 动态学习核心
+其他:       0.03M         — LayerNorm
 ```
 
 ## 项目结构
@@ -36,8 +36,8 @@ Mamba 层:  58.6M (70.5%) — 动态学习核心
 ├── prepare_data.py    # 一键数据准备脚本
 ├── requirements.txt   # 依赖
 ├── checkpoints/       # 模型权重
-│   ├── final.pt       # 最终模型
-│   └── step_*.pt      # 中间 checkpoints
+│   ├── final.pt       # 最终模型 (240M, v3)
+│   └── final_v2_83M.pt  # 上一轮 (83M, v2)
 ├── data/              # 语料和分词器
 │   ├── corpus.txt     # 中文语料
 │   └── zh_tokenizer.json  # 32K BPE 分词器
@@ -85,8 +85,8 @@ pip install datasets matplotlib tokenizers tqdm
 # 1. 准备数据 + 训练分词器
 python prepare_data.py --action all
 
-# 2. 开始训练 (大语料)
-python train.py --corpus data/corpus_large.txt --seq_len 2048 --batch_size 8 --max_steps 10000
+# 2. 开始训练 (大模型 + 大语料)
+python train.py --corpus data/corpus_v3.txt --d_model 1024 --n_layer 32 --seq_len 2048 --batch_size 8 --max_steps 15000
 
 # 3. 生成文本
 python generate.py --prompt "从前有一个小女孩"

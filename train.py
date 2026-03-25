@@ -64,7 +64,7 @@ def train(args):
     vocab_size = tokenizer.get_vocab_size()
     print(f"词表大小: {vocab_size}")
 
-    model = build_model(vocab_size=vocab_size, device=device)
+    model = build_model(vocab_size=vocab_size, d_model=args.d_model, n_layer=args.n_layer, device=device)
 
     dataloader = build_dataloader(
         corpus_file=args.corpus,
@@ -271,6 +271,8 @@ def train(args):
 def main():
     parser = argparse.ArgumentParser(description="Mamba-2 中文 LM 训练")
     parser.add_argument("--corpus", type=str, default=str(DATA_DIR / "corpus.txt"))
+    parser.add_argument("--d_model", type=int, default=768)
+    parser.add_argument("--n_layer", type=int, default=16)
     parser.add_argument("--seq_len", type=int, default=2048)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--max_steps", type=int, default=10000)
