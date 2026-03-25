@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Mamba-2 架构交互式笔记</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0e1a;color:#e0e0e0;overflow:hidden;height:100vh}
+.header{background:linear-gradient(135deg,#1a1f3a,#2a1f4a);padding:10px 24px;border-bottom:2px solid #3a3f6a;display:flex;justify-content:space-between;align-items:center;z-index:100;position:relative}
+.header h1{font-size:1.3em;background:linear-gradient(90deg,#64b5f6,#ce93d8);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.controls{display:flex;gap:10px;align-items:center}
+.btn{padding:7px 16px;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;transition:all .2s}
+.btn-tick{background:linear-gradient(135deg,#43a047,#66bb6a);color:#fff}
+.btn-tick:hover{transform:scale(1.05);box-shadow:0 0 15px rgba(76,175,80,.4)}
+.btn-reset{background:linear-gradient(135deg,#e53935,#ef5350);color:#fff}
+.btn-mode{background:linear-gradient(135deg,#1565c0,#42a5f5);color:#fff}
+.mode-label{font-size:12px;color:#aaa;padding:3px 10px;border-radius:10px;border:1px solid #555}
+.step-counter{font-size:13px;color:#ffd54f;font-weight:600}
+/* Step nav bar */
+.step-nav{background:#111520;border-bottom:1px solid #2a2f4a;padding:6px 16px;display:flex;align-items:center;gap:4px;overflow-x:auto;z-index:100;position:relative}
+.step-nav::-webkit-scrollbar{height:4px}
+.step-nav::-webkit-scrollbar-thumb{background:#3a3f6a;border-radius:2px}
+.step-btn{padding:4px 10px;border:1px solid #333;border-radius:6px;cursor:pointer;font-size:11px;color:#888;background:#181e30;transition:all .2s;white-space:nowrap;flex-shrink:0}
+.step-btn:hover{background:#252d48;color:#bbb;border-color:#555}
+.step-btn.active{background:linear-gradient(135deg,#1a3a6a,#2a4a8a);color:#90caf9;border-color:#42a5f5;box-shadow:0 0 8px rgba(66,165,245,.3);font-weight:600}
+.step-btn.visited{border-color:#3a5a3a;color:#8cb88c}
+.step-btn.m2{border-color:#ff980055}
+.step-btn.m2.active{background:linear-gradient(135deg,#3a2a0a,#5a3a0a);color:#ffb74d;border-color:#ff9800;box-shadow:0 0 8px rgba(255,152,0,.3)}
+.step-sep{width:12px;height:1px;background:#3a3f5a;flex-shrink:0;margin:0 2px}
+.main{display:flex;height:calc(100vh - 128px)}
+.diagram-panel{flex:1;position:relative;overflow:hidden;cursor:grab}
+.diagram-panel:active{cursor:grabbing}
+.diagram-panel canvas{position:absolute;top:0;left:0}
+.explain-panel{width:400px;background:#111827;border-left:2px solid #2a2f4a;padding:16px;overflow-y:auto;z-index:10;position:relative}
+.explain-panel h2{font-size:1em;color:#90caf9;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #333}
+.explain-panel .step-title{font-size:.95em;color:#ce93d8;margin:6px 0 4px;font-weight:600}
+.explain-panel p{font-size:12.5px;line-height:1.7;color:#bbb;margin-bottom:8px}
+.explain-panel .formula{background:#1a2040;border:1px solid #3a3f7a;border-radius:6px;padding:10px 14px;margin:8px 0;font-size:13px;color:#e0e0e0;overflow-x:auto}
+.explain-panel .formula .katex{font-size:1em}
+.explain-panel .code{background:#1a2040;border:1px solid #3a3f7a;border-radius:6px;padding:8px 12px;margin:6px 0;font-family:'Courier New',monospace;font-size:12px;color:#80cbc4;white-space:pre-wrap}
+.explain-panel .m2badge{display:inline-block;background:linear-gradient(135deg,#ff6f00,#ffa726);color:#000;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px}
+.explain-panel .ref{font-size:11px;color:#78909c;font-style:italic}
+.legend{display:flex;gap:12px;padding:8px 16px;position:absolute;bottom:10px;left:10px;z-index:10;background:rgba(10,14,26,.85);border-radius:8px;border:1px solid #333}
+.legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:#999}
+.legend-color{width:14px;height:14px;border-radius:3px}
+.zoom-info{position:absolute;top:10px;left:10px;z-index:10;font-size:11px;color:#666;background:rgba(10,14,26,.8);padding:4px 10px;border-radius:6px}
+.tip{background:#1a2a1a;border:1px solid #2e7d32;border-radius:6px;padding:8px;margin:8px 0;font-size:11px;color:#a5d6a7}
+</style>
+</head>
+<body>
+<div style="background:#0d1117;display:flex;gap:0;border-bottom:2px solid #ffd54f;position:relative;z-index:200">
+  <a href="mamba2_arch.html" style="padding:8px 20px;font-size:13px;font-weight:700;color:#ffd54f;text-decoration:none;background:#1a2040;border-bottom:2px solid #ffd54f">① 前向传播</a>
+  <a href="mamba2_inference.html" style="padding:8px 20px;font-size:13px;color:#888;text-decoration:none;border-bottom:2px solid transparent">② 推理生成</a>
+  <a href="mamba2_backprop.html" style="padding:8px 20px;font-size:13px;color:#888;text-decoration:none;border-bottom:2px solid transparent">③ 反向传播</a>
+</div>
+<div class="header">
+  <h1>Mamba-2 前向传播（训练）</h1>
+  <div class="controls">
+    <span class="step-counter" id="stepCounter">步骤 0/16</span>
+    <button class="btn btn-tick" onclick="tick()">▶ Tick</button>
+    <button class="btn btn-reset" onclick="resetAll()">↺ 重置</button>
+  </div>
+</div>
+<div class="step-nav" id="stepNav"></div>
+<div class="main">
+  <div class="diagram-panel" id="diagramPanel">
+    <canvas id="c"></canvas>
+    <div class="zoom-info" id="zoomInfo">滚轮缩放 | 拖动平移 | 点击模块查看详情</div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-color" style="background:#2196f3"></div>通用</div>
+      <div class="legend-item"><div class="legend-color" style="background:#ff9800"></div>Mamba-2 独有</div>
+      <div class="legend-item"><div class="legend-color" style="background:#4caf50"></div>训练专用</div>
+      <div class="legend-item"><div class="legend-color" style="background:#9c27b0"></div>SSM状态</div>
+      <div class="legend-item"><div class="legend-color" style="background:#ef5350"></div>门控分支</div>
+    </div>
+  </div>
+  <div class="explain-panel" id="explainPanel">
+    <h2>📖 详细解释</h2>
+    <div class="tip">点击图中模块或按 <b>▶ Tick</b> 逐步运行。<br/>橙色 = Mamba-2 特有 | 红色 = 门控分支（双链路）<br/>滚轮缩放，拖动平移。可用下方导航栏跳转任意步骤。</div>
+    <div id="explainContent"></div>
+  </div>
+</div>
+<script>
+const CVS=document.getElementById('c'),ctx=CVS.getContext('2d'),panel=document.getElementById('diagramPanel');
+let W,H,scale=1,offX=0,offY=0,dragging=false,dragX=0,dragY=0;
+let currentStep=-1,mode='train',animT=0,particles=[];
+const TOTAL_STEPS=16;
+
+function resize(){W=panel.clientWidth;H=panel.clientHeight;CVS.width=W*devicePixelRatio;CVS.height=H*devicePixelRatio;CVS.style.width=W+'px';CVS.style.height=H+'px';ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0)}
+window.addEventListener('resize',resize);resize();
+
+// Pan & Zoom
+panel.addEventListener('wheel',e=>{e.preventDefault();const z=e.deltaY<0?1.1:.9;const mx=e.offsetX,my=e.offsetY;offX=mx-(mx-offX)*z;offY=my-(my-offY)*z;scale*=z;scale=Math.max(.3,Math.min(3,scale));document.getElementById('zoomInfo').textContent=`缩放: ${(scale*100).toFixed(0)}%`});
+panel.addEventListener('mousedown',e=>{dragging=true;dragX=e.clientX-offX;dragY=e.clientY-offY;panel.style.cursor='grabbing'});
+window.addEventListener('mousemove',e=>{if(dragging){offX=e.clientX-dragX;offY=e.clientY-dragY}});
+window.addEventListener('mouseup',()=>{dragging=false;panel.style.cursor='grab'});
+
+// Block definitions matching official Mamba-2 diagram (dual path)
+// Now includes Tokenizer + Embedding before the Mamba Block
+const blocks=[
+  {id:'tokenizer',step:0,x:300,y:30,w:220,h:36,label:'BPE 分词器',sub:'"从前有一只" → [1823,945,302,15]',color:'#37474f',border:'#78909c'},
+  {id:'embed',step:1,x:300,y:100,w:220,h:40,label:'Embedding 查表',sub:'token_id → d_model 维向量',color:'#00695c',border:'#26a69a'},
+  {id:'input',step:2,x:300,y:175,w:220,h:36,label:'输入 x',sub:'[batch, seq, d_model]',color:'#37474f',border:'#78909c'},
+  {id:'inproj',step:3,x:300,y:245,w:220,h:40,label:'Linear (in_proj)',sub:'d_model → 2·expand·d_model',color:'#1565c0',border:'#42a5f5'},
+  // Left branch (SSM path)
+  {id:'conv',step:5,x:150,y:355,w:160,h:36,label:'Conv1D (d_conv=4)',sub:'因果卷积',color:'#1565c0',border:'#42a5f5'},
+  {id:'silu_l',step:6,x:150,y:420,w:160,h:30,label:'σ (SiLU)',sub:'x·sigmoid(x)',color:'#546e7a',border:'#78909c'},
+  {id:'ssm',step:7,x:120,y:485,w:220,h:80,label:'★ SSM (SSD核心)',sub:'h(t)=Ā·h(t-1)+B̄·x(t)\ny(t)=C·h(t)+D·x(t)',color:'#e65100',border:'#ff9800',isM2:true},
+  {id:'state',step:7,x:20,y:500,w:80,h:50,label:'隐状态 h',sub:'d_state=64',color:'#6a1b9a',border:'#ab47bc'},
+  // Right branch (gate path)
+  {id:'silu_r',step:4,x:510,y:355,w:160,h:36,label:'σ (SiLU)',sub:'门控激活',color:'#b71c1c',border:'#ef5350'},
+  // Merge
+  {id:'mult',step:8,x:350,y:605,w:120,h:40,label:'⊗ 逐元素乘',sub:'gate × ssm_out',color:'#37474f',border:'#ffd54f'},
+  // Post
+  {id:'norm',step:9,x:350,y:680,w:160,h:34,label:'RMSNorm (N)',sub:'归一化',color:'#546e7a',border:'#78909c'},
+  {id:'outproj',step:10,x:350,y:745,w:160,h:40,label:'Linear (out_proj)',sub:'expand·d_model → d_model',color:'#1565c0',border:'#42a5f5'},
+  {id:'residual',step:11,x:350,y:825,w:100,h:40,label:'⊕ 残差',sub:'+ 原始输入',color:'#37474f',border:'#66bb6a'},
+  // Outer: pre-norm, final
+  {id:'prenorm',step:12,x:300,y:905,w:220,h:34,label:'RMSNorm (层前)',sub:'每层输入归一化',color:'#546e7a',border:'#78909c'},
+  {id:'lmhead',step:13,x:300,y:975,w:220,h:40,label:'LM Head',sub:'d_model → vocab(32000) 权重共享',color:'#1565c0',border:'#42a5f5'},
+  {id:'loss',step:14,x:300,y:1055,w:220,h:40,label:'Cross-Entropy Loss',sub:'训练: 对比预测vs真实',color:'#2e7d32',border:'#66bb6a'},
+];
+
+// Connections: [fromId, toId, type]
+const conns=[
+  ['tokenizer','embed','straight'],
+  ['embed','input','straight'],
+  ['input','inproj','straight'],
+  ['inproj','conv','branch-left'],
+  ['inproj','silu_r','branch-right'],
+  ['conv','silu_l','straight'],
+  ['silu_l','ssm','straight'],
+  ['ssm','mult','merge-left'],
+  ['silu_r','mult','merge-right'],
+  ['mult','norm','straight'],
+  ['norm','outproj','straight'],
+  ['outproj','residual','straight'],
+  ['residual','prenorm','straight'],
+  ['prenorm','lmhead','straight'],
+  ['lmhead','loss','straight'],
+];
+
+function getBlock(id){return blocks.find(b=>b.id===id)}
+function bCx(b){return b.x+b.w/2}
+function bCy(b){return b.y+b.h/2}
+function bBot(b){return b.y+b.h}
+function bTop(b){return b.y}
+
+// Particles for animation
+function spawnParticles(fromId,toId,count=5){
+  const fb=getBlock(fromId),tb=getBlock(toId);if(!fb||!tb)return;
+  for(let i=0;i<count;i++){
+    particles.push({x:bCx(fb),y:bBot(fb),tx:bCx(tb),ty:bTop(tb),t:0,speed:.01+Math.random()*.015,size:3+Math.random()*2,alive:true});
+  }
+}
+
+const stepParticles=[
+  [['tokenizer','embed']],
+  [['embed','input']],
+  [['input','inproj']],
+  [['inproj','conv'],['inproj','silu_r']],
+  [['inproj','silu_r']],
+  [['conv','silu_l']],
+  [['silu_l','ssm']],
+  [['ssm','mult']],
+  [['silu_r','mult'],['ssm','mult']],
+  [['mult','norm']],
+  [['norm','outproj']],
+  [['outproj','residual']],
+  [['residual','prenorm']],
+  [['prenorm','lmhead']],
+  [['lmhead','loss']],
+];
+
+function drawRoundRect(x,y,w,h,r,fill,stroke,lw=1.5){
+  ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);ctx.lineTo(x+r,y+h);
+  ctx.quadraticCurveTo(x,y+h,x,y+h-r);ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);ctx.closePath();
+  if(fill){ctx.fillStyle=fill;ctx.fill()}
+  if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=lw;ctx.stroke()}
+}
+
+function drawArrow(x1,y1,x2,y2,color='#546e7a',lw=1.5){
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.strokeStyle=color;ctx.lineWidth=lw;ctx.stroke();
+  const a=Math.atan2(y2-y1,x2-x1),sz=7;
+  ctx.beginPath();ctx.moveTo(x2,y2);ctx.lineTo(x2-sz*Math.cos(a-Math.PI/6),y2-sz*Math.sin(a-Math.PI/6));
+  ctx.lineTo(x2-sz*Math.cos(a+Math.PI/6),y2-sz*Math.sin(a+Math.PI/6));ctx.closePath();ctx.fillStyle=color;ctx.fill();
+}
+
+function drawConnection(c,highlight){
+  const fb=getBlock(c[0]),tb=getBlock(c[1]);if(!fb||!tb)return;
+  const col=highlight?'#64b5f6':'#3a4a5a',lw=highlight?2.5:1.2;
+  let fx=bCx(fb),fy=bBot(fb),tx=bCx(tb),ty=bTop(tb);
+  if(c[2]==='branch-left'){fx=fb.x+fb.w*.3;tx=bCx(tb)}
+  if(c[2]==='branch-right'){fx=fb.x+fb.w*.7;tx=bCx(tb)}
+  if(c[2]==='merge-left'){fx=fb.x+fb.w*.7;tx=tb.x+tb.w*.3}
+  if(c[2]==='merge-right'){fx=bCx(fb);tx=tb.x+tb.w*.7}
+  ctx.beginPath();ctx.moveTo(fx,fy);
+  if(c[2]==='branch-left'||c[2]==='branch-right'){
+    const my=fy+(ty-fy)*.3;ctx.lineTo(fx,my);ctx.lineTo(tx,my);ctx.lineTo(tx,ty);
+  }else if(c[2]==='merge-left'||c[2]==='merge-right'){
+    const my=fy+(ty-fy)*.7;ctx.lineTo(fx,my);ctx.lineTo(tx,my);ctx.lineTo(tx,ty);
+  }else{ctx.lineTo(tx,ty)}
+  ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.stroke();
+  // arrowhead
+  const a=Math.PI/2,sz=6;
+  ctx.beginPath();ctx.moveTo(tx,ty);ctx.lineTo(tx-sz*Math.cos(a-Math.PI/6),ty-sz*Math.sin(a-Math.PI/6));
+  ctx.lineTo(tx-sz*Math.cos(a+Math.PI/6),ty-sz*Math.sin(a+Math.PI/6));ctx.closePath();ctx.fillStyle=col;ctx.fill();
+}
+
+// State recursion arrow
+function drawStateArrow(){
+  const s=getBlock('state'),ssm=getBlock('ssm');
+  ctx.beginPath();ctx.moveTo(s.x+s.w,bCy(s));ctx.lineTo(ssm.x,bCy(ssm));
+  ctx.strokeStyle='#ab47bc';ctx.lineWidth=1.5;ctx.setLineDash([4,3]);ctx.stroke();ctx.setLineDash([]);
+  // loop back
+  ctx.beginPath();ctx.moveTo(s.x+s.w/2,s.y+s.h);ctx.quadraticCurveTo(s.x+s.w/2,s.y+s.h+25,s.x+s.w+10,s.y+s.h+10);
+  ctx.quadraticCurveTo(s.x+s.w+20,bCy(s),s.x+s.w,bCy(s));
+  ctx.strokeStyle='#7b1fa2';ctx.lineWidth=1;ctx.setLineDash([3,3]);ctx.stroke();ctx.setLineDash([]);
+  ctx.font='9px sans-serif';ctx.fillStyle='#9c27b0';ctx.fillText('递推',s.x+s.w+4,s.y+s.h+18);
+}
+
+// Residual arrow (skip connection along left side)
+function drawResidualArrow(){
+  const inp=getBlock('input'),res=getBlock('residual');
+  const lx=inp.x-40;
+  ctx.beginPath();ctx.moveTo(inp.x,bCy(inp));ctx.lineTo(lx,bCy(inp));ctx.lineTo(lx,bCy(res));ctx.lineTo(res.x,bCy(res));
+  ctx.strokeStyle='#4caf50';ctx.lineWidth=1.2;ctx.setLineDash([5,4]);ctx.stroke();ctx.setLineDash([]);
+  ctx.font='10px sans-serif';ctx.fillStyle='#66bb6a';
+  ctx.save();ctx.translate(lx-4,(bCy(inp)+bCy(res))/2);ctx.rotate(-Math.PI/2);ctx.fillText('残差连接 (Skip)',0,0);ctx.restore();
+}
+
+// Branch labels
+function drawBranchLabels(){
+  const inBlock=currentStep>=2&&currentStep<=11;
+  ctx.font='bold 11px sans-serif';
+  ctx.fillStyle=inBlock?'#64b5f6':'#42a5f5';ctx.fillText('SSM 分支',160,330);
+  ctx.fillStyle=inBlock?'#ef9a9a':'#ef5350';ctx.fillText('门控分支',530,330);
+  if(inBlock){
+    ctx.shadowColor='#42a5f5';ctx.shadowBlur=18;
+  }
+  const borderCol=inBlock?'#42a5f5':'#37474f';
+  const lw=inBlock?2:1;
+  ctx.strokeStyle=borderCol;ctx.lineWidth=lw;ctx.setLineDash(inBlock?[6,3]:[4,4]);
+  drawRoundRect(100,225,600,630,12,null,borderCol,lw);
+  ctx.shadowBlur=0;
+  ctx.setLineDash([]);
+  ctx.font=inBlock?'bold 12px sans-serif':'11px sans-serif';
+  ctx.fillStyle=inBlock?'#90caf9':'#546e7a';
+  ctx.fillText('× N 层 (n_layer=32) 重复此块',110,240);
+}
+
+function draw(){
+  ctx.save();ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+  ctx.clearRect(0,0,W,H);
+  ctx.save();ctx.translate(offX,offY);ctx.scale(scale,scale);
+
+  // Bracket + labels
+  drawBranchLabels();
+
+  // Connections
+  conns.forEach(c=>{
+    const fb=getBlock(c[0]),tb=getBlock(c[1]);
+    const hl=(fb&&fb.step<=currentStep&&tb&&tb.step<=currentStep+1&&fb.step>=0);
+    drawConnection(c,hl);
+  });
+
+  drawStateArrow();
+  drawResidualArrow();
+
+  // Blocks
+  blocks.forEach(b=>{
+    const active=b.step===currentStep;
+    const glow=active?20:0;
+    if(glow){ctx.shadowColor=b.isM2?'#ff9800':'#64b5f6';ctx.shadowBlur=glow}
+    const lw=active?(b.isM2?3:2.5):1.5;
+    drawRoundRect(b.x,b.y,b.w,b.h,b.isM2?10:7,b.color,active?(b.isM2?'#ffb74d':b.border):b.border,lw);
+    ctx.shadowBlur=0;
+    // Label
+    ctx.font=`${b.isM2?'bold ':''}12px sans-serif`;ctx.fillStyle='#fff';ctx.textAlign='center';
+    const lines=b.label.split('\n');
+    lines.forEach((l,i)=>ctx.fillText(l,b.x+b.w/2,b.y+15+i*14));
+    if(b.sub){ctx.font='10px sans-serif';ctx.fillStyle=b.isM2?'#ffe0b2':'#90a4ae';
+      b.sub.split('\n').forEach((s,i)=>ctx.fillText(s,b.x+b.w/2,b.y+15+lines.length*14+i*12));
+    }
+    ctx.textAlign='start';
+    // Mamba-2 badge
+    if(b.isM2&&active){
+      ctx.font='bold 9px sans-serif';ctx.fillStyle='#ff9800';
+      ctx.fillText('⚡ MAMBA-2',b.x+b.w-65,b.y-4);
+    }
+  });
+
+  // Particles
+  particles.forEach(p=>{
+    if(!p.alive)return;
+    p.t+=p.speed;if(p.t>=1){p.alive=false;return}
+    const px=p.x+(p.tx-p.x)*p.t,py=p.y+(p.ty-p.y)*p.t;
+    ctx.beginPath();ctx.arc(px,py,p.size,0,Math.PI*2);
+    const alpha=1-Math.abs(p.t-.5)*2;
+    ctx.fillStyle=`rgba(100,181,246,${alpha*.8})`;ctx.fill();
+    ctx.beginPath();ctx.arc(px,py,p.size*2,0,Math.PI*2);
+    ctx.fillStyle=`rgba(100,181,246,${alpha*.15})`;ctx.fill();
+  });
+  particles=particles.filter(p=>p.alive);
+
+  ctx.restore();ctx.restore();
+  animT++;
+  requestAnimationFrame(draw);
+}
+draw();
+
+// Center diagram initially
+setTimeout(()=>{offX=W/2-410*scale;offY=20},100);
+
+// Click detection
+CVS.addEventListener('click',e=>{
+  const mx=(e.offsetX-offX)/scale,my=(e.offsetY-offY)/scale;
+  blocks.forEach(b=>{if(mx>=b.x&&mx<=b.x+b.w&&my>=b.y&&my<=b.y+b.h){
+    jumpToStep(b.step);
+  }});
+});
+
+const explains=[
+{t:'第0步: BPE 分词器',m2:false,h:`<p>神经网络<b>只能处理数字</b>，不能直接处理文字。分词器就是"文字→整数"的桥梁。</p>
+<p>我们用的是 <b>BPE (Byte-Pair Encoding)</b> 分词：从单字开始，不断合并最频繁的相邻字对，构建子词词表。</p>
+<div class="code">"从前有一只小猫" → [1823, 945, 302, 15, 47, 89, 3021]</div>
+<div class="formula">$$\\text{词表大小 } |V| = 32000$$</div>
+<p>三种分词粒度对比：</p>
+<div class="code">按字切: 从/前/有   → 序列太长, 单字无语义
+按词切: 从前/有    → 词表爆炸, 无法处理新词
+BPE:   从前/有/一只 → 平衡长度与语义 ✓</div>
+<p><b>分词不是任何模型的专属操作</b>——Transformer、Mamba、RNN、CNN 处理文本都需要先分词。它是文本进入神经网络的"大门"。</p>
+<p class="ref">📚 d2l 第14章 - 自然语言处理预训练；第15.6节 - 子词嵌入</p>`},
+
+{t:'第1步: Embedding 查表',m2:false,h:`<p>分词后每个 token 是一个整数（如 1823），但整数之间<b>没有语义距离</b>——1823 和 1824 可能毫无关系。</p>
+<p>Embedding 是一张 <b>可学习的查找表</b>：</p>
+<div class="formula">$$\\mathbf{W}_{\\text{embed}} \\in \\mathbb{R}^{|V| \\times d_{\\text{model}}} = \\mathbb{R}^{32000 \\times 1024}$$</div>
+<div class="code">token_id = 1823
+x = W_embed[1823]  # 取第1823行, 得到1024维向量</div>
+<p>训练过程中，意思相近的词，向量会<b>自然地靠近</b>。</p>
+<div class="formula">$$[B, L] \\xrightarrow{\\text{Embedding}} [B, L, d_{\\text{model}}] = [8, 2048, 1024]$$</div>
+<p>这三个维度分别是：</p>
+<div class="code">B = 8       Batch Size（批大小）
+            一次喂给GPU 8个样本并行训练
+            ↑ 纯粹为了效率, 互不影响
+
+L = 2048    Sequence Length（序列长度）
+            每个样本有2048个token
+            ↑ "时间轴": 第1个字, 第2个字, ..., 第2048个字
+
+d_model = 1024  Model Dimension（模型维度）
+            每个token用1024个数字描述其含义
+            ↑ "特征轴": 这个词的语义向量有多"宽"</div>
+<p>形象地说：<b>8本书 × 每本2048个字 × 每个字用1024个数字描述</b>。</p>
+<p>对应代码 <code>model.py</code> 第 40 行：<code>self.embedding = nn.Embedding(32000, 1024)</code></p>
+<p><b>小知识</b>：最后的 LM Head 和 Embedding <b>共享同一个权重矩阵</b> \\(\\mathbf{W}_{\\text{embed}}\\)，这叫 Weight Tying，能减少 ~32M 参数。</p>
+<p class="ref">📚 d2l 第15.1节 - 词嵌入 (Word2Vec)</p>`},
+
+{t:'第2步: 输入 x（已嵌入）',m2:false,h:`<p>经过 Embedding 后，整数序列变成了<b>稠密向量序列</b>，这才是真正进入 Mamba Block 的输入。</p>
+<div class="formula">$$\\mathbf{x} \\in \\mathbb{R}^{B \\times L \\times d_{\\text{model}}}$$</div>
+<div class="code"># model.py forward() 函数:
+x = self.embedding(input_ids)  # 从此开始就是向量了
+for layer in self.layers:
+    x = layer["mamba"](layer["norm"](x)) + x</div>
+<p>接下来 \\(\\mathbf{x}\\) 会经过 \\(N=32\\) 层 Mamba Block 的反复处理。每一层都会让 \\(\\mathbf{x}\\) 变得"更聪明"——编码了更高层的语义信息。</p>
+<p class="ref">📚 d2l 第14章 - 自然语言处理预训练</p>`},
+
+{t:'第3步: in_proj — 输入投影 + 分叉',m2:false,h:`<p>一个大 Linear 层把 \\(d_{\\text{model}}\\) 投影到 \\(2 \\times E \\times d_{\\text{model}}\\)。</p>
+<div class="formula">$$\\mathbf{z} = \\mathbf{x} \\, \\mathbf{W}_{\\text{in}} \\;\\in\\; \\mathbb{R}^{d_{\\text{model}} \\to 2 E \\cdot d_{\\text{model}}}$$</div>
+<p><b>E = expand = 2</b>，表示 Block 内部的工作维度是外部的 2 倍：</p>
+<div class="formula">$$d_{\\text{inner}} = E \\times d_{\\text{model}} = 2 \\times 1024 = 2048 \\;\\text{(特征维度，不是序列长度!)}$$</div>
+<p>⚠️ <b>注意区分两个 2048</b>：</p>
+<div class="code">数据形状: [B=8, L=2048, d_inner=2048]
+                  ↑序列长度    ↑特征维度
+                  (多少个token) (每个token多宽)
+                  碰巧同值，但完全不同！
+
+L=2048: seq_len, 由训练参数决定, 可以改
+d_inner=2048: E×d_model=2×1024, 由模型结构决定</div>
+<p><b>为什么要升维？</b> 在 1024 维空间中，token 特征可能非线性纠缠在一起。升到 2048 维就像给模型更大的"工作台"——很多在低维纠缠的特征在高维变得线性可分。处理完后 out_proj 再降回 1024 维，只保留有用信息。</p>
+<p>这种<b>"升维 → 处理 → 降维"</b>模式到处都是：Transformer FFN 升 4 倍，Mamba 升 2 倍（SSM 循环状态本身已提供额外计算空间，不需要那么激进）。</p>
+<p><b>为什么要 ×2？</b> 因为投影后要<b>一拆为二</b>——一半给 SSM 分支，一半给门控分支：</p>
+<div class="code">每个token: 1024维 → in_proj → 4096维
+                                 ↓
+              ┌──────────────────┴──────────────────┐
+         z: 2048维(特征)                       x: 2048维(特征)
+         (门控分支)                            (SSM分支)
+         只过 SiLU                            Conv→SiLU→SSM</div>
+<p>实际 in_proj 还要多投射出 SSM 的 \\(\\mathbf{B}, \\mathbf{C}, \\Delta\\) 参数：</p>
+<div class="formula">$$d_{\\text{in\\_proj}} = \\underbrace{2 \\times d_{\\text{inner}}}_{\\text{z + x} = 4096} + \\underbrace{2 \\times n_g \\times d_{\\text{state}}}_{\\text{B + C} = 128} + \\underbrace{n_{\\text{heads}}}_{\\Delta = 32} = 4256$$</div>
+<p class="ref">📚 d2l 第11.7节 - FFN 升维思想；第5.1节 - 多层感知机（升维+非线性=万能逼近）</p>`},
+
+{t:'第4步: 门控分支 — σ(SiLU)',m2:false,h:`<p>右路<b>门控分支</b>：只过一个 SiLU 激活，不做任何序列建模。</p>
+<div class="formula">$$\\text{gate} = \\text{SiLU}(\\mathbf{z}_{\\text{right}}) = \\mathbf{z}_{\\text{right}} \\cdot \\sigma(\\mathbf{z}_{\\text{right}})$$</div>
+<p>它的作用是<b>门控</b>——决定 SSM 分支的每个维度"让多少信息通过"。</p>
+<p>类似 LSTM 的门机制：\\(\\sigma\\) 输出 0~1，0=完全阻断，1=完全通过。</p>
+<p>这种双分支 + 门控结构叫 <b>GLU (Gated Linear Unit)</b>，最早来自 2017 年 Facebook 的论文。</p>
+<p class="ref">📚 d2l 第10.1节 - 门控循环单元 (GRU) 有类似门控思想</p>`},
+
+{t:'第5步: Conv1D — 因果卷积',m2:false,h:`<p>左路 <b>SSM 分支</b>：先过一个 1D 因果卷积，窗口 \\(d_{\\text{conv}}=4\\)。</p>
+<div class="formula">$$y[t] = \\sum_{k=0}^{3} w[k] \\cdot x[t-k]$$</div>
+<p>只看当前 + 前 3 个 token（因果性，不偷看未来）。</p>
+<p>SSM 本身是线性递推，无法捕捉短距离的非线性局部模式。Conv1D 补了这一块。</p>
+<p>你可以把它理解为给 SSM 加了一个"4-gram 局部感受野"。</p>
+<p class="ref">📚 d2l 第7章 - CNN 卷积基础</p>`},
+
+{t:'第6步: σ(SiLU) — 左路激活',m2:false,h:`<p>卷积输出过 SiLU 激活，引入非线性。</p>
+<div class="formula">$$\\mathbf{x}_{\\text{ssm}} = \\text{SiLU}\\big(\\text{Conv1D}(\\mathbf{z}_{\\text{left}})\\big)$$</div>
+<p>没有这个激活，整个 Conv → SSM 链路就是纯线性的，表达能力有限。</p>
+<p>SiLU 比 ReLU 更平滑，在深层网络中梯度表现更好（导数在 \\(x=0\\) 处为 \\(0.5\\)，无断点）。</p>`},
+
+{t:'第7步: ★ SSD 核心 — Mamba-2 的灵魂 <span class="m2badge">MAMBA-2</span>',m2:true,h:`
+<p style="color:#ffd54f;font-weight:600">📡 Part 1: 从信号与系统出发——直觉理解</p>
+<p>想象你在听一段语音。你的大脑不是记住每一个声波采样点，而是维护一个<b>"当前理解状态"</b>——听到"从前有一只"，你脑中已经形成了"故事开头，即将出现角色"的状态。下一个词"猫"进来时，状态更新为"故事关于一只猫"。</p>
+<p>SSM 就是这个过程的数学模型：</p>
+<div class="code">隐状态 h = "大脑当前的理解" (固定大小的向量)
+输入 x   = "当前听到的词"
+输出 y   = "基于当前理解做出的反应"
+
+每来一个新词:
+  h_new = (保留一部分旧理解) + (吸收一部分新输入)
+  y     = 从当前理解中提取需要的信息</div>
+
+<p style="color:#ffd54f;font-weight:600">📐 Part 2: 连续世界的方程——信号与系统视角</p>
+<p>在信号与系统中，线性时不变(LTI)系统用<b>常微分方程</b>描述：</p>
+<div class="formula">$$\\frac{d\\mathbf{h}(t)}{dt} = \\mathbf{A}\\mathbf{h}(t) + \\mathbf{B}x(t)$$</div>
+<div class="formula">$$y(t) = \\mathbf{C}\\mathbf{h}(t) + Dx(t)$$</div>
+<div class="code">A: 系统矩阵 — 系统自身如何演化 (弹簧的弹性系数)
+B: 输入矩阵 — 外部输入如何注入系统 (推力怎么作用)
+C: 输出矩阵 — 从内部状态中读取什么 (传感器放在哪)
+D: 直通项   — 输入直接绕过系统到输出 (跳连)
+
+这在电路分析、控制论中用了几十年了!</div>
+<p>如果 \\(\\mathbf{A}\\) 是负数，系统天然就是<b>指数衰减</b>的——这就是"遗忘"的数学本质。不是人为设计，是微分方程自带的物理属性。</p>
+
+<p style="color:#ffd54f;font-weight:600">🔢 Part 3: 从连续到离散——为什么是 exp(ΔA)</p>
+<p>文本是<b>离散</b>的（一个token一个token），但上面的方程是连续的。怎么办？</p>
+<p>假设在两个 token 之间，间隔时间为 \\(\\Delta\\)。对微分方程做精确求解（不是近似！）：</p>
+<div class="formula">$$\\mathbf{h}(t+\\Delta) = \\underbrace{e^{\\mathbf{A}\\Delta}}_{\\bar{\\mathbf{A}}} \\cdot \\mathbf{h}(t) + \\underbrace{\\left(\\int_0^{\\Delta} e^{\\mathbf{A}\\tau} d\\tau \\right)\\mathbf{B}}_{\\bar{\\mathbf{B}}} \\cdot x(t)$$</div>
+<div class="code">推导过程 (微分方程通解):
+  dh/dt = Ah + Bx
+
+  这是一阶线性ODE, 标准解法:
+  两边乘积分因子 exp(-At):
+  d/dt [exp(-At)·h] = exp(-At)·B·x
+
+  从 t 积分到 t+Δ:
+  exp(-A(t+Δ))·h(t+Δ) - exp(-At)·h(t) = ∫ exp(-Aτ)·B·x dτ
+
+  整理得:
+  h(t+Δ) = exp(AΔ)·h(t) + [积分项]·B·x(t)
+                ↑
+         这就是 Ā = exp(ΔA) 的来历!</div>
+<p>精确的 \\(\\bar{\\mathbf{B}}\\) 很复杂，Mamba 用<b>一阶近似</b>（Euler 法）简化为 \\(\\bar{\\mathbf{B}} \\approx \\Delta \\mathbf{B}\\)。够用且计算快。</p>
+
+<p style="color:#ffd54f;font-weight:600">⚡ Part 4: 选择性——Δ, B, C 从输入动态生成</p>
+<p>传统 SSM（如 S4）的 A, B, C 是<b>固定参数</b>。Mamba 的创新：<b>让 Δ, B, C 由当前输入 x 决定</b>。</p>
+<div class="formula">$$\\Delta_t = \\text{softplus}(\\mathbf{x}_t \\cdot \\mathbf{W}_\\Delta + b_\\Delta) \\qquad \\text{(softplus 保证 } \\Delta > 0\\text{)}$$</div>
+<div class="code">Δ 的计算: x → 线性投影(W_Δ) → 加偏置(dt_bias) → softplus → Δ
+B 的计算: x → 线性投影(in_proj 的一部分) → B
+C 的计算: x → 线性投影(in_proj 的一部分) → C
+
+效果:
+  遇到"的"(虚词) → x 投影出小 Δ → Ā≈1 → 保持旧记忆不变
+  遇到"北京"(关键词) → x 投影出大 Δ → Ā≈0 → 清掉旧记忆, 写入新信息
+
+这就是"选择性": 模型学会了对不同输入采用不同的记忆策略!</div>
+
+<p style="color:#ffd54f;font-weight:600">🔄 Part 5: SSD 对偶性——展开递推 ≈ Attention</p>
+<p>Mamba-2 的核心发现：把递推<b>展开成矩阵</b>，长得像 Attention。</p>
+<p>简化为 3 个时间步的情况：</p>
+<div class="code">h(1) = B̄₁·x₁
+h(2) = ā₂·h(1) + B̄₂·x₂ = ā₂B̄₁·x₁ + B̄₂·x₂
+h(3) = ā₃·h(2) + B̄₃·x₃ = ā₃ā₂B̄₁·x₁ + ā₃B̄₂·x₂ + B̄₃·x₃
+
+y(t) = C_t · h(t), 写成矩阵:</div>
+<div class="formula">$$\\begin{bmatrix} y_1 \\\\ y_2 \\\\ y_3 \\end{bmatrix} = \\underbrace{\\begin{bmatrix} C_1 B_1 & 0 & 0 \\\\ C_2 \\bar{a} B_1 & C_2 B_2 & 0 \\\\ C_3 \\bar{a}^2 B_1 & C_3 \\bar{a} B_2 & C_3 B_3 \\end{bmatrix}}_{\\text{下三角矩阵 = 因果性!}} \\begin{bmatrix} x_1 \\\\ x_2 \\\\ x_3 \\end{bmatrix}$$</div>
+<p>因为 Mamba-2 让 \\(A = a\\)(标量)，衰减链 \\(\\bar{a}^{i-j}\\) 只和距离有关，整个矩阵可以分解为：</p>
+<div class="formula">$$\\mathbf{Y} = \\underbrace{\\left(\\mathbf{L} \\odot \\mathbf{C}\\mathbf{B}^\\top\\right)}_{\\text{≈ Attention 的 QK^T}} \\cdot \\mathbf{X}$$</div>
+<div class="code">对比 Attention:
+  Attn: Y = softmax(Q·Kᵀ / √d) · V
+  SSD:  Y = (L ⊙ C·Bᵀ) · X
+
+  Q, K ↔ C, B   (查询/键 ↔ 输出投影/输入投影)
+  softmax归一化 ↔ L=指数衰减掩码 (距离越远权重越小)
+  V ↔ X          (值 ↔ 输入)
+
+  核心区别:
+  Attention: "精确回查" — 任何两个token可以有任意强的关联
+  SSD:       "衰减回忆" — 越远的token关联越弱 (但计算更高效)</div>
+
+<p style="color:#ffd54f;font-weight:600">🎯 Part 6: 训练和推理——同一公式的两种算法</p>
+<div class="code">训练 (矩阵模式):
+  一次性算: Y = (L ⊙ CBᵀ) · X
+  所有时间步并行, GPU Tensor Core 全速运转
+  复杂度 O(L²) 但并行效率极高
+
+推理 (递推模式):
+  逐步算: h(t) = ā·h(t-1) + B̄·x(t)
+  每步只需一次向量运算
+  复杂度 O(1)/步, 内存恒定, 不需要KV Cache
+
+数学上完全等价! 这就是 "Structured State Space Duality"</div>
+<p class="ref">📚 d2l 第9章 - RNN隐状态递推 → SSM 是其线性化版本；信号与系统 - 连续/离散系统变换</p>`},
+
+{t:'第8步: ⊗ 门控乘法 — 双路汇合',m2:false,h:`<p>SSM 输出和门控分支<b>逐元素相乘</b>。</p>
+<div class="formula">$$\\mathbf{o} = \\underbrace{\\text{gate}}_{\\text{右路 SiLU}} \\;\\odot\\; \\underbrace{\\mathbf{y}_{\\text{ssm}}}_{\\text{左路 Conv→SSM}}$$</div>
+<p>这就是官方架构图中 \\(\\otimes\\) 符号的含义。</p>
+<p>门控的作用：如果 gate 某个维度 \\(\\approx 0\\)，对应的 SSM 输出就被"关闭"；\\(\\approx 1\\) 就完全通过。</p>
+<p>这给了模型额外的<b>特征选择能力</b>——不是 SSM 算出什么都用，而是经过门控筛选。</p>`},
+
+{t:'第9步: RMSNorm (N)',m2:false,h:`<p>官方图中 SSM 上方的 (N) 节点。合并后做一次归一化。</p>
+<div class="formula">$$\\text{RMSNorm}(\\mathbf{x}) = \\frac{\\mathbf{x}}{\\sqrt{\\frac{1}{d}\\sum_{i=1}^{d} x_i^2}} \\cdot \\boldsymbol{\\gamma}$$</div>
+<p>确保送入 out_proj 的数值稳定。这是 Mamba-2 Block 内部的归一化，不是层间的。</p>
+<p class="ref">📚 d2l 第8.5节 - 归一化技术</p>`},
+
+{t:'第10步: out_proj — 输出投影',m2:false,h:`<p>Linear 层将内部维度降回 \\(d_{\\text{model}}\\)。</p>
+<div class="formula">$$\\mathbf{out} = \\mathbf{merged} \\cdot \\mathbf{W}_{\\text{out}} \\;\\in\\; \\mathbb{R}^{E \\cdot d_{\\text{model}} \\to d_{\\text{model}}}$$</div>
+<p>和 in_proj 对称：升维 → 处理 → 降维。</p>`},
+
+{t:'第11步: ⊕ 残差连接',m2:false,h:`<p>把 Mamba Block 的输出和<b>原始输入</b>直接相加。</p>
+<div class="formula">$$\\mathbf{x}_{\\text{next}} = \\underbrace{\\text{MambaBlock}(\\mathbf{x})}_{\\text{学到的变化量}} + \\underbrace{\\mathbf{x}}_{\\text{恒等映射}}$$</div>
+<p>32 层深的网络，没有残差 → 梯度消失。有了残差 → 梯度可以"抄近路"直达底层。</p>
+<p>这也是图中最外层那个 \\(\\oplus\\) 和向上的箭头。</p>
+<p class="ref">📚 d2l 第8.6节 - ResNet 残差网络</p>`},
+
+{t:'第12步: 层前 RMSNorm (Pre-Norm)',m2:false,h:`<p>每一层 Mamba Block 之前都有一个 RMSNorm。</p>
+<div class="formula">$$\\text{for } l = 1 \\ldots N: \\quad \\mathbf{x} = \\text{Layer}_l\\!\\big(\\text{RMSNorm}(\\mathbf{x})\\big) + \\mathbf{x}$$</div>
+<p>Pre-Norm (先归一化再算) vs Post-Norm (先算再归一化) 是两种风格。Mamba/LLaMA 系列都用 Pre-Norm，训练更稳定。</p>`},
+
+{t:'第13步: LM Head',m2:false,h:`<p>所有 \\(N\\) 层跑完后，映射到词表维度。</p>
+<div class="formula">$$\\text{logits} = \\text{Norm}_f(\\mathbf{x}) \\cdot \\mathbf{W}_{\\text{embed}}^\\top \\;\\in\\; \\mathbb{R}^{d_{\\text{model}} \\to |V|}$$</div>
+<p>每个位置输出 \\(|V|=32000\\) 维的 logits，表示"下一个 token 是哪个"的原始分数。</p>
+<p>权重共享: \\(\\mathbf{W}_{\\text{embed}}\\) 和 Embedding 层用同一个矩阵。</p>
+<p class="ref">📚 d2l 第3.4节 - softmax 回归</p>`},
+
+{t:'第14步: Cross-Entropy Loss',m2:false,h:`<p>训练模式：将预测概率和真实 token 对比。</p>
+<div class="formula">$$\\mathcal{L} = -\\sum_{t=1}^{L} \\log P(y_t^* \\mid y_{<t}) \\qquad \\text{你的模型: } 163.8 \\to 3.09$$</div>
+<p>之后 \\(\\mathcal{L}.\\text{backward}()\\) → 梯度回传 → AdamW 更新全部参数。</p>
+<p>⚡ 梯度如何流回每一层更新权重？→ 见 <a href="mamba2_backprop.html" style="color:#ffd54f">③ 反向传播</a></p>
+<p class="ref">📚 d2l 第3.4节 - softmax + 交叉熵损失</p>`},
+
+{t:'完整流程回顾',m2:false,h:`<p>完整的 Mamba-2 语言模型流程：</p>
+<div class="formula">$$\\text{文字} \\xrightarrow{\\text{BPE}} \\text{token IDs} \\xrightarrow{W_{\\text{embed}}} \\mathbf{x} \\xrightarrow{\\times N \\text{ 层}} \\text{logits} \\to P(\\text{next token})$$</div>
+<p>每一层 Mamba Block 内部：</p>
+<div class="formula">$$\\mathbf{x} \\xrightarrow{W_{\\text{in}}} \\begin{cases} \\text{左路: Conv1D} \\to \\text{SiLU} \\to \\text{SSM(SSD)} \\\\ \\text{右路: SiLU (门控)} \\end{cases} \\xrightarrow{\\odot} \\text{Norm} \\to W_{\\text{out}} \\to \\oplus \\text{残差}$$</div>
+<p>关键对比：</p>
+<div class="formula">$$\\begin{aligned} \\textbf{Mamba-1} &: \\mathbf{A} = \\text{diag}(a_1,\\ldots,a_N), \\;\\text{Selective Scan (顺序递推)} \\\\ \\textbf{Mamba-2} &: \\mathbf{A} = a \\cdot \\mathbf{I}, \\;\\text{SSD (可展开为矩阵乘法, 支持多头)} \\end{aligned}$$</div>
+<p>双分支的意义：SSM 做序列建模，门控做特征筛选，两者配合效果 > 单路。</p>`},
+];
+
+function showExplain(s){
+  if(s>=explains.length)s=explains.length-1;
+  const e=explains[s];
+  document.getElementById('explainContent').innerHTML=`<p class="step-title">${e.t}</p>${e.h}`;
+  renderLatex();
+  updateStepNav();
+}
+
+function renderLatex(){
+  if(typeof renderMathInElement==='function'){
+    renderMathInElement(document.getElementById('explainContent'),{
+      delimiters:[
+        {left:'$$',right:'$$',display:true},
+        {left:'\\(',right:'\\)',display:false},
+        {left:'\\[',right:'\\]',display:true}
+      ],
+      throwOnError:false
+    });
+  }
+}
+
+const stepLabels=['BPE分词','Embedding','输入 x','in_proj 分叉','门控 SiLU','Conv1D','左路 SiLU','★ SSD核心','⊗ 门控乘','RMSNorm','out_proj','⊕ 残差','Pre-Norm','LM Head','Loss/采样','总结'];
+const stepIsM2=[false,false,false,false,false,false,false,true,false,false,false,false,false,false,false,false];
+let visitedSteps=new Set();
+
+function buildStepNav(){
+  const nav=document.getElementById('stepNav');
+  nav.innerHTML='';
+  for(let i=0;i<TOTAL_STEPS;i++){
+    if(i===2||i===4||i===7||i===9||i===13){
+      const sep=document.createElement('span');sep.className='step-sep';nav.appendChild(sep);
+    }
+    const btn=document.createElement('button');
+    btn.className='step-btn'+(stepIsM2[i]?' m2':'');
+    btn.textContent=`${i}: ${stepLabels[i]}`;
+    btn.onclick=()=>jumpToStep(i);
+    btn.id='stepBtn'+i;
+    nav.appendChild(btn);
+  }
+  updateStepNav();
+}
+
+function updateStepNav(){
+  for(let i=0;i<TOTAL_STEPS;i++){
+    const btn=document.getElementById('stepBtn'+i);
+    if(!btn)continue;
+    let cls='step-btn'+(stepIsM2[i]?' m2':'');
+    if(i===currentStep)cls+=' active';
+    else if(visitedSteps.has(i))cls+=' visited';
+    btn.className=cls;
+  }
+  const activeBtn=document.getElementById('stepBtn'+currentStep);
+  if(activeBtn)activeBtn.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
+}
+
+function jumpToStep(s){
+  currentStep=s;
+  visitedSteps.add(s);
+  document.getElementById('stepCounter').textContent=`步骤 ${currentStep+1}/${TOTAL_STEPS}`;
+  showExplain(currentStep);
+  if(stepParticles[currentStep])stepParticles[currentStep].forEach(p=>spawnParticles(p[0],p[1],8));
+}
+
+function tick(){
+  currentStep++;if(currentStep>=TOTAL_STEPS)currentStep=0;
+  visitedSteps.add(currentStep);
+  document.getElementById('stepCounter').textContent=`步骤 ${currentStep+1}/${TOTAL_STEPS}`;
+  showExplain(currentStep);
+  if(stepParticles[currentStep])stepParticles[currentStep].forEach(p=>spawnParticles(p[0],p[1],8));
+}
+function resetAll(){
+  currentStep=-1;particles=[];visitedSteps.clear();
+  document.getElementById('stepCounter').textContent=`步骤 0/${TOTAL_STEPS}`;
+  document.getElementById('explainContent').innerHTML='<p>已重置，点击 ▶ Tick 重新开始。</p>';
+  updateStepNav();
+}
+buildStepNav();
+
+document.addEventListener('DOMContentLoaded',()=>{
+  const waitKatex=setInterval(()=>{
+    if(typeof renderMathInElement==='function'){clearInterval(waitKatex);if(currentStep>=0)renderLatex();}
+  },100);
+});
+</script>
+</body></html>

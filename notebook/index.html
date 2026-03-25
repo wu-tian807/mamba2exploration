@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Mamba-2 交互式学习笔记</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0e1a;color:#e0e0e0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.container{max-width:720px;width:100%;padding:32px}
+h1{font-size:2em;text-align:center;margin-bottom:8px;background:linear-gradient(90deg,#64b5f6,#ce93d8,#ffd54f);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{text-align:center;color:#666;font-size:14px;margin-bottom:40px}
+.cards{display:flex;flex-direction:column;gap:16px}
+.card{display:flex;align-items:stretch;background:#111827;border:1px solid #2a2f4a;border-radius:14px;overflow:hidden;text-decoration:none;color:inherit;transition:all .25s}
+.card:hover{transform:translateY(-3px);box-shadow:0 8px 30px rgba(0,0,0,.4)}
+.card-num{width:72px;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:800;flex-shrink:0}
+.card:nth-child(1) .card-num{background:linear-gradient(135deg,#1a3060,#1a4080);color:#64b5f6}
+.card:nth-child(2) .card-num{background:linear-gradient(135deg,#2a1a40,#3a1a50);color:#ce93d8}
+.card:nth-child(3) .card-num{background:linear-gradient(135deg,#3a1a1a,#4a1a2a);color:#ef5350}
+.card:nth-child(1):hover{border-color:#42a5f5}
+.card:nth-child(2):hover{border-color:#ab47bc}
+.card:nth-child(3):hover{border-color:#ef5350}
+.card-body{padding:16px 20px;flex:1}
+.card-body h2{font-size:1.1em;margin-bottom:4px}
+.card:nth-child(1) .card-body h2{color:#64b5f6}
+.card:nth-child(2) .card-body h2{color:#ce93d8}
+.card:nth-child(3) .card-body h2{color:#ef5350}
+.card-body p{font-size:12.5px;color:#888;line-height:1.6}
+.card-body .tags{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px}
+.tag{font-size:10px;padding:2px 8px;border-radius:10px;border:1px solid #333;color:#777}
+.card:nth-child(1) .tag{border-color:#1a3a6a;color:#5a9ad6}
+.card:nth-child(2) .tag{border-color:#3a1a5a;color:#a070c0}
+.card:nth-child(3) .tag{border-color:#4a1a2a;color:#c06060}
+.arrow{width:40px;display:flex;align-items:center;justify-content:center;font-size:18px;color:#444}
+.card:hover .arrow{color:#aaa}
+.footer{text-align:center;margin-top:40px;font-size:11px;color:#444;line-height:1.8}
+.footer a{color:#546e7a;text-decoration:none}
+.footer a:hover{color:#90a4ae}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Mamba-2 交互式学习笔记</h1>
+  <p class="subtitle">从分词到梯度更新，逐步拆解 240M 参数模型的每一个环节</p>
+
+  <div class="cards">
+    <a class="card" href="mamba2_arch.html">
+      <div class="card-num">①</div>
+      <div class="card-body">
+        <h2>前向传播</h2>
+        <p>交互式架构图：从 BPE 分词 → Embedding → 32层 Mamba Block（双分支 SSM + 门控）→ LM Head → Loss。可逐步 Tick、自由缩放拖动、点击查看每层详细公式。</p>
+        <div class="tags">
+          <span class="tag">交互式 Canvas</span>
+          <span class="tag">16步流程</span>
+          <span class="tag">LaTeX 公式</span>
+          <span class="tag">Mamba-2 vs Mamba-1</span>
+        </div>
+      </div>
+      <div class="arrow">→</div>
+    </a>
+
+    <a class="card" href="mamba2_inference.html">
+      <div class="card-num">②</div>
+      <div class="card-body">
+        <h2>推理生成</h2>
+        <p>模型训练好后如何一个字一个字地生成文本：自回归循环、SSM 递推模式 vs Transformer KV Cache、采样策略（temperature / top-k / top-p）。</p>
+        <div class="tags">
+          <span class="tag">O(1) 推理</span>
+          <span class="tag">无需 KV Cache</span>
+          <span class="tag">SSD 对偶性</span>
+          <span class="tag">采样策略</span>
+        </div>
+      </div>
+      <div class="arrow">→</div>
+    </a>
+
+    <a class="card" href="mamba2_backprop.html">
+      <div class="card-num">③</div>
+      <div class="card-body">
+        <h2>反向传播</h2>
+        <p>梯度如何从 Loss 逆流回每一层：残差高速公路、门控梯度分流、SSM 时间反传 (BPTT)、W_in 梯度汇聚。AdamW 优化器、梯度裁剪、余弦退火、BF16 混合精度。</p>
+        <div class="tags">
+          <span class="tag">链式法则</span>
+          <span class="tag">240M 参数表</span>
+          <span class="tag">AdamW</span>
+          <span class="tag">训练技巧</span>
+        </div>
+      </div>
+      <div class="arrow">→</div>
+    </a>
+  </div>
+
+  <div class="footer">
+    <p>项目: <a href="https://github.com/wu-tian807/mamba2exploration">mamba2exploration</a> | 模型: 240M 参数 | GPU: 4090D</p>
+    <p>配套资料: <a href="silu_activation.md">SiLU 激活函数</a> · <a href="silu_analysis.png">SiLU 图像分析</a></p>
+  </div>
+</div>
+</body>
+</html>

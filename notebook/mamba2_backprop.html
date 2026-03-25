@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Mamba-2 反向传播</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0e1a;color:#e0e0e0;overflow:hidden;height:100vh}
+.page-nav{background:#0d1117;display:flex;gap:0;border-bottom:2px solid #ffd54f}
+.page-nav a{padding:8px 20px;font-size:13px;color:#888;text-decoration:none;border-bottom:2px solid transparent;font-weight:600}
+.page-nav a.active{color:#ffd54f;background:#1a2040;border-bottom-color:#ffd54f}
+.page-nav a:hover:not(.active){color:#bbb;background:#151b2e}
+.header{background:linear-gradient(135deg,#2a1a1a,#3a1f2a);padding:10px 24px;border-bottom:1px solid #4a2f3a;display:flex;justify-content:space-between;align-items:center}
+.header h1{font-size:1.2em;background:linear-gradient(90deg,#ef5350,#ffd54f);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.controls{display:flex;gap:10px;align-items:center}
+.btn{padding:7px 16px;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;transition:all .2s}
+.btn-tick{background:linear-gradient(135deg,#e53935,#ef5350);color:#fff}
+.btn-tick:hover{transform:scale(1.05);box-shadow:0 0 15px rgba(239,83,80,.4)}
+.btn-reset{background:linear-gradient(135deg,#555,#777);color:#fff}
+.step-counter{font-size:13px;color:#ffd54f;font-weight:600}
+.step-nav{background:#111520;border-bottom:1px solid #2a2f4a;padding:6px 16px;display:flex;align-items:center;gap:4px;overflow-x:auto}
+.step-nav::-webkit-scrollbar{height:4px}
+.step-nav::-webkit-scrollbar-thumb{background:#3a3f6a;border-radius:2px}
+.step-btn{padding:4px 10px;border:1px solid #333;border-radius:6px;cursor:pointer;font-size:11px;color:#888;background:#181e30;transition:all .2s;white-space:nowrap;flex-shrink:0}
+.step-btn:hover{background:#252d48;color:#bbb;border-color:#555}
+.step-btn.active{background:linear-gradient(135deg,#3a1a1a,#5a2a2a);color:#ef9a9a;border-color:#ef5350;box-shadow:0 0 8px rgba(239,83,80,.3);font-weight:600}
+.step-btn.visited{border-color:#5a3a3a;color:#c08080}
+.step-btn.trick{border-color:#3a5a3a55;color:#8a8}
+.step-btn.trick.active{background:linear-gradient(135deg,#1a2a1a,#2a3a2a);color:#a5d6a7;border-color:#66bb6a;box-shadow:0 0 8px rgba(102,187,106,.3)}
+.step-sep{width:12px;height:1px;background:#3a3f5a;flex-shrink:0;margin:0 2px}
+.main{display:flex;height:calc(100vh - 128px)}
+.diagram-panel{flex:1;position:relative;overflow:hidden;cursor:grab}
+.diagram-panel:active{cursor:grabbing}
+.diagram-panel canvas{position:absolute;top:0;left:0}
+.explain-panel{width:420px;background:#111827;border-left:2px solid #2a2f4a;padding:16px;overflow-y:auto}
+.explain-panel h2{font-size:1em;color:#ef9a9a;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #333}
+.explain-panel .step-title{font-size:.95em;color:#ffd54f;margin:6px 0 4px;font-weight:600}
+.explain-panel p{font-size:12.5px;line-height:1.7;color:#bbb;margin-bottom:8px}
+.explain-panel .formula{background:#1a2040;border:1px solid #3a3f7a;border-radius:6px;padding:10px 14px;margin:8px 0;font-size:13px;color:#e0e0e0;overflow-x:auto}
+.explain-panel .code{background:#1a2040;border:1px solid #3a3f7a;border-radius:6px;padding:8px 12px;margin:6px 0;font-family:'Courier New',monospace;font-size:12px;color:#80cbc4;white-space:pre-wrap}
+.explain-panel .ref{font-size:11px;color:#78909c;font-style:italic}
+.explain-panel .update-box{background:#1a1a0a;border:1px solid #ffd54f44;border-radius:6px;padding:10px;margin:8px 0}
+.explain-panel .update-box h4{color:#ffd54f;font-size:12px;margin-bottom:4px}
+.tip{background:#2a1a1a;border:1px solid #4a2020;border-radius:6px;padding:8px;margin:8px 0;font-size:11px;color:#ef9a9a}
+.legend{display:flex;gap:12px;padding:8px 16px;position:absolute;bottom:10px;left:10px;z-index:10;background:rgba(10,14,26,.85);border-radius:8px;border:1px solid #333}
+.legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:#999}
+.legend-color{width:14px;height:14px;border-radius:3px}
+.zoom-info{position:absolute;top:10px;left:10px;z-index:10;font-size:11px;color:#666;background:rgba(10,14,26,.8);padding:4px 10px;border-radius:6px}
+</style>
+</head>
+<body>
+<div class="page-nav">
+  <a href="mamba2_arch.html">① 前向传播</a>
+  <a href="mamba2_inference.html">② 推理生成</a>
+  <a href="mamba2_backprop.html" class="active">③ 反向传播</a>
+</div>
+<div class="header">
+  <h1>🔥 反向传播：梯度逆流更新每一个 W</h1>
+  <div class="controls">
+    <span class="step-counter" id="stepCounter">步骤 0/13</span>
+    <button class="btn btn-tick" onclick="tick()">◀ 回退一步</button>
+    <button class="btn btn-reset" onclick="resetAll()">↺ 重置</button>
+  </div>
+</div>
+<div class="step-nav" id="stepNav"></div>
+<div class="main">
+  <div class="diagram-panel" id="diagramPanel">
+    <canvas id="c"></canvas>
+    <div class="zoom-info" id="zoomInfo">滚轮缩放 | 拖动平移</div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-color" style="background:#ef5350"></div>梯度流</div>
+      <div class="legend-item"><div class="legend-color" style="background:#ffd54f"></div>参数更新</div>
+      <div class="legend-item"><div class="legend-color" style="background:#66bb6a"></div>训练技巧</div>
+      <div class="legend-item"><div class="legend-color" style="background:#4caf50"></div>梯度高速公路</div>
+    </div>
+  </div>
+  <div class="explain-panel" id="explainPanel">
+    <h2>🔥 梯度详解</h2>
+    <div class="tip">点击图中模块或按 <b>◀ 回退一步</b> 查看梯度如何从 Loss 逆流回每一层。<br/>红色箭头 = 梯度流动方向（与前向相反）</div>
+    <div id="explainContent"></div>
+  </div>
+</div>
+<script>
+const CVS=document.getElementById('c'),ctx=CVS.getContext('2d'),panel=document.getElementById('diagramPanel');
+let W,H,scale=1,offX=0,offY=0,dragging=false,dragX=0,dragY=0;
+let currentStep=-1,animT=0,particles=[];
+const TOTAL_STEPS=13;
+
+function resize(){W=panel.clientWidth;H=panel.clientHeight;CVS.width=W*devicePixelRatio;CVS.height=H*devicePixelRatio;CVS.style.width=W+'px';CVS.style.height=H+'px';ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0)}
+window.addEventListener('resize',resize);resize();
+
+panel.addEventListener('wheel',e=>{e.preventDefault();const z=e.deltaY<0?1.1:.9;const mx=e.offsetX,my=e.offsetY;offX=mx-(mx-offX)*z;offY=my-(my-offY)*z;scale*=z;scale=Math.max(.3,Math.min(3,scale));document.getElementById('zoomInfo').textContent=`缩放: ${(scale*100).toFixed(0)}%`});
+panel.addEventListener('mousedown',e=>{dragging=true;dragX=e.clientX-offX;dragY=e.clientY-offY;panel.style.cursor='grabbing'});
+window.addEventListener('mousemove',e=>{if(dragging){offX=e.clientX-dragX;offY=e.clientY-dragY}});
+window.addEventListener('mouseup',()=>{dragging=false;panel.style.cursor='grab'});
+
+const blocks=[
+  {id:'loss',step:0,x:300,y:30,w:220,h:40,label:'∂L/∂logits',sub:'Loss 梯度源头',color:'#b71c1c',border:'#ef5350'},
+  {id:'lmhead',step:1,x:300,y:105,w:220,h:40,label:'LM Head 梯度',sub:'∂L/∂W_embed (方向1)',color:'#c62828',border:'#e57373'},
+  {id:'normf',step:2,x:300,y:180,w:220,h:34,label:'RMSNorm_f 梯度',sub:'∂L/∂γ_f',color:'#4a3040',border:'#78909c'},
+  {id:'residual',step:3,x:350,y:265,w:120,h:44,label:'⊕ 残差分叉',sub:'梯度高速公路',color:'#1b5e20',border:'#4caf50'},
+  {id:'outproj',step:4,x:350,y:345,w:160,h:40,label:'out_proj 梯度',sub:'∂L/∂W_out',color:'#4a2040',border:'#e57373'},
+  {id:'norm',step:5,x:350,y:420,w:160,h:34,label:'RMSNorm 梯度',sub:'∂L/∂γ',color:'#4a3040',border:'#78909c'},
+  {id:'mult',step:6,x:350,y:495,w:130,h:44,label:'⊗ 梯度分流',sub:'→ SSM路 + 门控路',color:'#4a3020',border:'#ffd54f'},
+  {id:'ssm',step:7,x:120,y:590,w:220,h:80,label:'SSM 时间反传',sub:'∂L/∂A, ∂L/∂B, ∂L/∂C\n∂L/∂D, ∂L/∂Δ',color:'#bf360c',border:'#ff9800'},
+  {id:'silu_l',step:8,x:150,y:710,w:160,h:30,label:'SiLU 梯度(左)',sub:'∂SiLU/∂x 连续可导',color:'#4a3040',border:'#78909c'},
+  {id:'conv',step:9,x:150,y:775,w:160,h:36,label:'Conv1D 梯度',sub:'∂L/∂w_conv',color:'#4a2040',border:'#e57373'},
+  {id:'silu_r',step:6,x:510,y:590,w:160,h:36,label:'SiLU 梯度(右)',sub:'门控分支回传',color:'#4a2030',border:'#ef5350'},
+  {id:'inproj',step:10,x:300,y:855,w:220,h:44,label:'in_proj 梯度汇聚',sub:'∂L/∂W_in (最大矩阵)',color:'#c62828',border:'#e57373'},
+  {id:'prenorm',step:10,x:300,y:935,w:220,h:34,label:'Pre-Norm → 下一层',sub:'梯度继续流向第31层...',color:'#4a3040',border:'#78909c'},
+  {id:'embed',step:11,x:300,y:1010,w:220,h:40,label:'Embedding 梯度',sub:'∂L/∂W_embed (方向2)',color:'#c62828',border:'#e57373'},
+];
+
+const conns=[
+  ['loss','lmhead'],['lmhead','normf'],['normf','residual'],
+  ['residual','outproj'],['outproj','norm'],['norm','mult'],
+  ['mult','ssm'],['mult','silu_r'],
+  ['ssm','silu_l'],['silu_l','conv'],['conv','inproj'],['silu_r','inproj'],
+  ['inproj','prenorm'],['prenorm','embed'],
+];
+
+function getBlock(id){return blocks.find(b=>b.id===id)}
+function bCx(b){return b.x+b.w/2}
+function bCy(b){return b.y+b.h/2}
+function bBot(b){return b.y+b.h}
+function bTop(b){return b.y}
+
+function spawnParticles(fromId,toId,count=5){
+  const fb=getBlock(fromId),tb=getBlock(toId);if(!fb||!tb)return;
+  for(let i=0;i<count;i++){
+    particles.push({x:bCx(fb),y:bBot(fb),tx:bCx(tb),ty:bTop(tb),t:0,speed:.01+Math.random()*.015,size:3+Math.random()*2,alive:true});
+  }
+}
+
+function drawRoundRect(x,y,w,h,r,fill,stroke,lw=1.5){
+  ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);ctx.lineTo(x+r,y+h);
+  ctx.quadraticCurveTo(x,y+h,x,y+h-r);ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);ctx.closePath();
+  if(fill){ctx.fillStyle=fill;ctx.fill()}
+  if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=lw;ctx.stroke()}
+}
+
+function drawGradArrow(fb,tb,highlight){
+  const col=highlight?'#ef5350':'#5a2a2a',lw=highlight?2.5:1.2;
+  let fx=bCx(fb),fy=bBot(fb),tx=bCx(tb),ty=bTop(tb);
+  if(fb.id==='mult'&&tb.id==='ssm'){fx=fb.x+fb.w*.3;tx=bCx(tb)}
+  if(fb.id==='mult'&&tb.id==='silu_r'){fx=fb.x+fb.w*.7;tx=bCx(tb)}
+  if(fb.id==='conv'&&tb.id==='inproj'){fx=bCx(fb);tx=tb.x+tb.w*.3}
+  if(fb.id==='silu_r'&&tb.id==='inproj'){fx=bCx(fb);tx=tb.x+tb.w*.7}
+  ctx.beginPath();ctx.moveTo(fx,fy);
+  if((fb.id==='mult'&&tb.id==='ssm')||(fb.id==='mult'&&tb.id==='silu_r')){
+    const my=fy+(ty-fy)*.3;ctx.lineTo(fx,my);ctx.lineTo(tx,my);ctx.lineTo(tx,ty);
+  }else if((fb.id==='conv'&&tb.id==='inproj')||(fb.id==='silu_r'&&tb.id==='inproj')){
+    const my=fy+(ty-fy)*.7;ctx.lineTo(fx,my);ctx.lineTo(tx,my);ctx.lineTo(tx,ty);
+  }else{ctx.lineTo(tx,ty)}
+  ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.stroke();
+  const sz=7;ctx.beginPath();ctx.moveTo(tx,ty);ctx.lineTo(tx-sz*Math.cos(Math.PI/2-Math.PI/6),ty-sz*Math.sin(Math.PI/2-Math.PI/6));
+  ctx.lineTo(tx-sz*Math.cos(Math.PI/2+Math.PI/6),ty-sz*Math.sin(Math.PI/2+Math.PI/6));ctx.closePath();ctx.fillStyle=col;ctx.fill();
+}
+
+function drawResidualHighway(){
+  const res=getBlock('residual'),emb=getBlock('embed');
+  const rx=res.x+res.w+40;
+  ctx.beginPath();ctx.moveTo(res.x+res.w,bCy(res));ctx.lineTo(rx,bCy(res));ctx.lineTo(rx,bCy(emb));ctx.lineTo(emb.x+emb.w,bCy(emb));
+  ctx.strokeStyle=currentStep>=3?'#4caf50':'#2a3a2a';ctx.lineWidth=currentStep>=3?2.5:1;ctx.setLineDash([6,4]);ctx.stroke();ctx.setLineDash([]);
+  ctx.font='10px sans-serif';ctx.fillStyle=currentStep>=3?'#66bb6a':'#3a4a3a';
+  ctx.save();ctx.translate(rx+5,(bCy(res)+bCy(emb))/2);ctx.rotate(Math.PI/2);ctx.fillText('梯度高速公路 (×1 直通)',0,0);ctx.restore();
+}
+
+function drawBlockBracket(){
+  const inBlock=currentStep>=3&&currentStep<=10;
+  const col=inBlock?'#ef535066':'#2a2020';
+  ctx.strokeStyle=col;ctx.lineWidth=inBlock?1.5:1;ctx.setLineDash([4,4]);
+  drawRoundRect(100,240,600,720,12,null,col,inBlock?1.5:1);
+  ctx.setLineDash([]);
+  ctx.font=inBlock?'bold 11px sans-serif':'11px sans-serif';ctx.fillStyle=inBlock?'#ef9a9a':'#4a3a3a';
+  ctx.fillText('× 32层 (梯度从第32层逆流到第1层)',110,255);
+  if(inBlock){ctx.font='bold 11px sans-serif';ctx.fillStyle='#e57373';ctx.fillText('SSM 分支 ←',160,575);ctx.fillStyle='#ef5350';ctx.fillText('门控分支 ←',530,575)}
+}
+
+function draw(){
+  ctx.save();ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+  ctx.clearRect(0,0,W,H);ctx.save();ctx.translate(offX,offY);ctx.scale(scale,scale);
+  drawBlockBracket();drawResidualHighway();
+  conns.forEach(c=>{
+    const fb=getBlock(c[0]),tb=getBlock(c[1]);if(!fb||!tb)return;
+    const hl=fb.step<=currentStep&&tb.step<=currentStep+1;
+    drawGradArrow(fb,tb,hl);
+  });
+  blocks.forEach(b=>{
+    const active=b.step===currentStep;const glow=active?18:0;
+    if(glow){ctx.shadowColor=b.id==='residual'?'#4caf50':'#ef5350';ctx.shadowBlur=glow}
+    drawRoundRect(b.x,b.y,b.w,b.h,8,b.color,active?'#fff':b.border,active?2.5:1.5);
+    ctx.shadowBlur=0;
+    ctx.font='12px sans-serif';ctx.fillStyle='#fff';ctx.textAlign='center';
+    ctx.fillText(b.label,b.x+b.w/2,b.y+16);
+    if(b.sub){ctx.font='10px sans-serif';ctx.fillStyle='#bf9090';
+      b.sub.split('\n').forEach((s,i)=>ctx.fillText(s,b.x+b.w/2,b.y+30+i*12))}
+    ctx.textAlign='start';
+  });
+  particles.forEach(p=>{
+    if(!p.alive)return;p.t+=p.speed;if(p.t>=1){p.alive=false;return}
+    const px=p.x+(p.tx-p.x)*p.t,py=p.y+(p.ty-p.y)*p.t;
+    ctx.beginPath();ctx.arc(px,py,p.size,0,Math.PI*2);
+    const alpha=1-Math.abs(p.t-.5)*2;
+    ctx.fillStyle=`rgba(239,83,80,${alpha*.8})`;ctx.fill();
+  });
+  particles=particles.filter(p=>p.alive);
+  ctx.restore();ctx.restore();animT++;requestAnimationFrame(draw);
+}
+draw();
+setTimeout(()=>{offX=W/2-410*scale;offY=20},100);
+
+CVS.addEventListener('click',e=>{
+  const mx=(e.offsetX-offX)/scale,my=(e.offsetY-offY)/scale;
+  blocks.forEach(b=>{if(mx>=b.x&&mx<=b.x+b.w&&my>=b.y&&my<=b.y+b.h)jumpToStep(b.step)});
+});
+
+const explains=[
+{t:'第0步: Loss 梯度——一切的源头',h:`<p>Cross-Entropy Loss 对 logits 的梯度是整条链路的<b>源头</b>：</p>
+<div class="formula">$$\\frac{\\partial \\mathcal{L}}{\\partial \\text{logits}_i} = \\hat{y}_i - y_i^*$$</div>
+<p>简单得惊人：预测概率 \\(\\hat{y}\\) 减去真实标签 \\(y^*\\)（one-hot）。</p>
+<div class="code">预测对了 (ŷ≈1, y*=1): 梯度≈0 → 不需要调整
+预测错了 (ŷ≈0, y*=1): 梯度≈-1 → 需要大幅调整</div>
+<p>这个梯度向量形状为 \\([B, L, 32000]\\)，是一个"每个位置每个词有多错"的误差信号。</p>
+<p class="ref">📚 d2l 第3.4节 - softmax + 交叉熵梯度</p>`},
+
+{t:'第1步: LM Head → W_embed 梯度 (方向1)',h:`<p>logits = x · W_embed^T, 所以：</p>
+<div class="formula">$$\\frac{\\partial \\mathcal{L}}{\\partial \\mathbf{W}_{\\text{embed}}} = \\frac{\\partial \\mathcal{L}}{\\partial \\text{logits}}^\\top \\cdot \\mathbf{x}_{\\text{final}}$$</div>
+<div class="formula">$$\\frac{\\partial \\mathcal{L}}{\\partial \\mathbf{x}_{\\text{final}}} = \\frac{\\partial \\mathcal{L}}{\\partial \\text{logits}} \\cdot \\mathbf{W}_{\\text{embed}}$$</div>
+<div class="update-box"><h4>🟡 W_embed 更新（第1次）</h4><p style="font-size:12px;color:#ccc">W_embed 被 LM Head 和 Embedding 共享，这里先收到来自 LM Head 的梯度。最后 Embedding 还会贡献第2次梯度，两次<b>加在一起</b>更新同一个矩阵。</p></div>`},
+
+{t:'第2步: RMSNorm_f 梯度',h:`<p>梯度穿过最终归一化层，更新缩放参数 \\(\\gamma_f\\)：</p>
+<div class="formula">$$\\frac{\\partial \\mathcal{L}}{\\partial \\boldsymbol{\\gamma}_f} = \\frac{\\partial \\mathcal{L}}{\\partial \\mathbf{y}} \\odot \\frac{\\mathbf{x}}{\\text{RMS}(\\mathbf{x})}$$</div>
+<p>RMSNorm 的梯度计算比 LayerNorm 简单（不需要算均值的梯度），这也是 Mamba 选用它的原因之一。</p>`},
+
+{t:'第3步: ⊕ 残差分叉——梯度高速公路',h:`<p>\\(\\mathbf{x}_{\\text{out}} = \\text{Block}(\\mathbf{x}) + \\mathbf{x}\\) 的反向传播：</p>
+<div class="formula">$$\\frac{\\partial \\mathcal{L}}{\\partial \\mathbf{x}} = \\frac{\\partial \\mathcal{L}}{\\partial \\mathbf{x}_{\\text{out}}} \\times \\underbrace{1}_{\\text{直通}} + \\frac{\\partial \\mathcal{L}}{\\partial \\mathbf{x}_{\\text{out}}} \\times \\frac{\\partial \\text{Block}}{\\partial \\mathbf{x}}$$</div>
+<p>那个 <b>×1</b> 是关键！梯度<b>无损直通</b>，不经过任何变换。</p>
+<div class="code">没有残差: 梯度穿32层 → 连乘32次 → 指数衰减 💀
+有残差:   梯度走高速公路 → 每层+1 → 始终强信号 ✅
+
+这就是右侧绿色虚线: 梯度从第32层直通到第1层</div>
+<p>同时，另一份梯度流入 Block 内部（out_proj → ... → in_proj），更新所有参数。</p>
+<p class="ref">📚 d2l 第8.6节 - ResNet 残差网络</p>`},
+
+{t:'第4步: out_proj → W_out 更新',h:`<p>out = x · W_out, 标准线性层反传：</p>
+<div class="formula">$$\\frac{\\partial \\mathcal{L}}{\\partial \\mathbf{W}_{\\text{out}}} = \\mathbf{x}_{\\text{merged}}^\\top \\cdot \\frac{\\partial \\mathcal{L}}{\\partial \\mathbf{out}}$$</div>
+<div class="update-box"><h4>🟡 W_out 更新</h4><p style="font-size:12px;color:#ccc">形状 [2048, 1024]，每层 2.1M 参数。梯度会调整"从高维提取什么信息压缩回低维"的策略。</p></div>`},
+
+{t:'第5步: RMSNorm 梯度 → γ 更新',h:`<p>Block 内部的 RMSNorm，和 RMSNorm_f 同理，更新缩放参数 \\(\\gamma\\)。</p>
+<div class="formula">$$\\frac{\\partial \\mathcal{L}}{\\partial \\boldsymbol{\\gamma}} = \\frac{\\partial \\mathcal{L}}{\\partial \\mathbf{y}} \\odot \\hat{\\mathbf{x}}$$</div>
+<p>参数量很小（2048个 γ），但对训练稳定性至关重要。</p>`},
+
+{t:'第6步: ⊗ 门控乘法——梯度分流到两条路',h:`<p>\\(\\mathbf{o} = \\text{gate} \\odot \\text{content}\\) 的反向传播：</p>
+<div class="formula">$$\\frac{\\partial \\mathcal{L}}{\\partial \\text{content}} = \\frac{\\partial \\mathcal{L}}{\\partial \\mathbf{o}} \\odot \\text{gate}$$</div>
+<div class="formula">$$\\frac{\\partial \\mathcal{L}}{\\partial \\text{gate}} = \\frac{\\partial \\mathcal{L}}{\\partial \\mathbf{o}} \\odot \\text{content}$$</div>
+<p><b>gate 缩放了 content 的梯度</b>：如果某维 gate≈0（关闭），content 那维梯度也≈0——模型说"别在这维浪费学习力度"。</p>
+<p>右路的 SiLU 梯度: \\(\\frac{\\partial \\mathcal{L}}{\\partial \\mathbf{z}_{\\text{right}}} = \\frac{\\partial \\mathcal{L}}{\\partial \\text{gate}} \\cdot \\text{SiLU}'(z)\\)</p>
+<p>两条路的梯度最终汇聚到 in_proj 的 W_in。</p>`},
+
+{t:'第7步: SSM 时间反传 (BPTT)',h:`<p>SSM 递推链 \\(h_t = \\bar{A} h_{t-1} + \\bar{B} x_t\\) 展开后，梯度沿时间<b>从后往前</b>逐步回传：</p>
+<div class="formula">$$\\frac{\\partial \\mathcal{L}}{\\partial \\mathbf{h}_t} = \\frac{\\partial \\mathcal{L}}{\\partial \\mathbf{y}_t} \\cdot \\mathbf{C}_t + \\frac{\\partial \\mathcal{L}}{\\partial \\mathbf{h}_{t+1}} \\cdot \\bar{\\mathbf{A}}$$</div>
+<div class="update-box"><h4>🟡 SSM 各参数的梯度</h4>
+<div class="code" style="font-size:11px">∂L/∂A_log → 遗忘速率 (A=-exp(A_log))
+  控制每个head遗忘多快
+
+∂L/∂dt_bias → Δ偏置 (时间步长默认值)
+  影响模型的默认记忆策略
+
+∂L/∂D → 跳连参数
+  D大=依赖当前输入; D小=依赖历史
+
+∂L/∂W_in(B,C,Δ部分) → 选择性
+  面对不同输入,B/C/Δ怎么变</div></div>
+<p>Mamba-2 的 SSD 模式可以把这个时间反传也写成矩阵运算，GPU 并行反传！</p>
+<p class="ref">📚 d2l 第9.7节 - 通过时间反向传播 (BPTT)</p>`},
+
+{t:'第8步: SiLU 梯度 (左路)',h:`<p>SiLU 的导数：</p>
+<div class="formula">$$\\text{SiLU}'(x) = \\sigma(x) + x \\cdot \\sigma(x)(1-\\sigma(x)) = \\sigma(x)(1 + x(1-\\sigma(x)))$$</div>
+<p>在 \\(x=0\\) 处导数为 0.5（平滑过渡），不会像 ReLU 那样导数突变。这保证了梯度稳定回传。</p>`},
+
+{t:'第9步: Conv1D 梯度 → w_conv 更新',h:`<p>Depthwise Conv1D 的反传：每个通道独立计算。</p>
+<div class="formula">$$\\frac{\\partial \\mathcal{L}}{\\partial w_k^{(c)}} = \\sum_{t} \\frac{\\partial \\mathcal{L}}{\\partial y_t^{(c)}} \\cdot x_{t-k}^{(c)}$$</div>
+<div class="update-box"><h4>🟡 Conv1D 权重更新</h4><p style="font-size:12px;color:#ccc">2048通道 × 4权重 = 8192参数。每个通道的4个权重独立接收梯度，学习各自的时间模式。</p></div>`},
+
+{t:'第10步: in_proj 梯度汇聚 → W_in 更新',h:`<p>\\(\\mathbf{W}_{\\text{in}} \\in \\mathbb{R}^{1024 \\times 4256}\\) 汇聚<b>两条分支</b>的全部梯度：</p>
+<div class="formula">$$\\frac{\\partial \\mathcal{L}}{\\partial \\mathbf{W}_{\\text{in}}} = \\mathbf{x}^\\top \\cdot \\left[\\frac{\\partial \\mathcal{L}}{\\partial \\mathbf{z}_{\\text{gate}}} \\;\\Big\\|\\; \\frac{\\partial \\mathcal{L}}{\\partial \\mathbf{z}_{\\text{ssm}}} \\;\\Big\\|\\; \\frac{\\partial \\mathcal{L}}{\\partial \\mathbf{B}} \\;\\Big\\|\\; \\frac{\\partial \\mathcal{L}}{\\partial \\mathbf{C}} \\;\\Big\\|\\; \\frac{\\partial \\mathcal{L}}{\\partial \\Delta}\\right]$$</div>
+<div class="update-box"><h4>🟡 W_in 更新 (每层最大矩阵)</h4><p style="font-size:12px;color:#ccc">每层 4.36M 参数。W_in 的不同列（门控/SSM/B/C/Δ）各自接收对应分支的梯度，独立进化形成协同。</p></div>
+<p>梯度继续穿过 Pre-Norm 流向下一层（第31层→第30层→...→第1层）。</p>`},
+
+{t:'第11步: Embedding → W_embed 梯度 (方向2)',h:`<p>梯度穿过 32 层后到达 Embedding：</p>
+<div class="formula">$$\\frac{\\partial \\mathcal{L}}{\\partial \\mathbf{W}_{\\text{embed}}} \\mathrel{+}= \\text{(来自Embedding层的梯度)}$$</div>
+<p>W_embed 现在收到了<b>两个方向</b>的梯度：</p>
+<div class="code">方向1: Loss → LM Head → W_embed  (第1步)
+方向2: Loss → 32层Block → Embedding → W_embed (这一步)
+
+两个梯度相加, 共同更新 W_embed
+= 这个矩阵同时学到:
+  "哪些词的向量表示需要更接近" (来自Embedding)
+  "哪些词的预测分数需要调整"   (来自LM Head)</div>`},
+
+{t:'第12步: AdamW 优化器 + 训练技巧',h:`<p>所有参数的梯度算完后，AdamW 执行实际更新：</p>
+<div class="formula">$$\\begin{aligned} \\mathbf{m}_t &= 0.9\\,\\mathbf{m}_{t-1} + 0.1\\,\\mathbf{g}_t \\quad &\\text{(动量: 记住方向)} \\\\ \\mathbf{v}_t &= 0.999\\,\\mathbf{v}_{t-1} + 0.001\\,\\mathbf{g}_t^2 \\quad &\\text{(方差: 自适应步幅)} \\\\ \\mathbf{W} &= \\mathbf{W} - lr \\cdot \\frac{\\hat{\\mathbf{m}}_t}{\\sqrt{\\hat{\\mathbf{v}}_t}+\\epsilon} - lr \\cdot \\lambda \\mathbf{W} \\end{aligned}$$</div>
+<div class="code">训练技巧:
+① 梯度裁剪: ||g|| > 1.0 时缩放, 防止梯度爆炸
+② 余弦退火: lr从3e-4→0, 先大步后小步
+③ BF16混合精度: 计算用16位(快), 累加用32位(准)</div>
+<p class="ref">📚 d2l 第12.10节 - Adam; 第12.11节 - 学习率调度</p>`},
+];
+
+function renderLatex(){if(typeof renderMathInElement==='function'){renderMathInElement(document.getElementById('explainContent'),{delimiters:[{left:'$$',right:'$$',display:true},{left:'\\(',right:'\\)',display:false}],throwOnError:false})}}
+
+function showExplain(s){
+  if(s>=explains.length)s=explains.length-1;
+  const e=explains[s];
+  document.getElementById('explainContent').innerHTML='<p class="step-title">'+e.t+'</p>'+e.h;
+  renderLatex();updateStepNav();
+}
+
+const stepLabels=['Loss源头','LM Head','RMSNorm_f','⊕残差分叉','out_proj','RMSNorm','⊗梯度分流','SSM反传','SiLU(左)','Conv1D','in_proj汇聚','Embedding','AdamW+技巧'];
+const stepIsTrick=[false,false,false,false,false,false,false,false,false,false,false,false,true];
+let visitedSteps=new Set();
+
+function buildStepNav(){
+  const nav=document.getElementById('stepNav');nav.innerHTML='';
+  for(let i=0;i<TOTAL_STEPS;i++){
+    if(i===3||i===6||i===10||i===12){const sep=document.createElement('span');sep.className='step-sep';nav.appendChild(sep)}
+    const btn=document.createElement('button');
+    btn.className='step-btn'+(stepIsTrick[i]?' trick':'');
+    btn.textContent=i+': '+stepLabels[i];btn.onclick=()=>jumpToStep(i);btn.id='stepBtn'+i;
+    nav.appendChild(btn);
+  }
+  updateStepNav();
+}
+function updateStepNav(){
+  for(let i=0;i<TOTAL_STEPS;i++){
+    const btn=document.getElementById('stepBtn'+i);if(!btn)continue;
+    let cls='step-btn'+(stepIsTrick[i]?' trick':'');
+    if(i===currentStep)cls+=' active';else if(visitedSteps.has(i))cls+=' visited';
+    btn.className=cls;
+  }
+  const ab=document.getElementById('stepBtn'+currentStep);if(ab)ab.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
+}
+function jumpToStep(s){
+  currentStep=s;visitedSteps.add(s);
+  document.getElementById('stepCounter').textContent='步骤 '+(currentStep+1)+'/'+TOTAL_STEPS;
+  showExplain(currentStep);
+  const sp=[[['loss','lmhead']],[['lmhead','normf']],[['normf','residual']],[['residual','outproj']],[['outproj','norm']],[['norm','mult']],[['mult','ssm'],['mult','silu_r']],[['ssm','silu_l']],[['silu_l','conv']],[['conv','inproj'],['silu_r','inproj']],[['inproj','prenorm']],[['prenorm','embed']],[]];
+  if(sp[s])sp[s].forEach(p=>spawnParticles(p[0],p[1],8));
+}
+function tick(){currentStep++;if(currentStep>=TOTAL_STEPS)currentStep=0;jumpToStep(currentStep)}
+function resetAll(){currentStep=-1;particles=[];visitedSteps.clear();document.getElementById('stepCounter').textContent='步骤 0/'+TOTAL_STEPS;document.getElementById('explainContent').innerHTML='<p>已重置，点击 ◀ 回退一步 开始。</p>';updateStepNav()}
+
+buildStepNav();
+document.addEventListener('DOMContentLoaded',()=>{const w=setInterval(()=>{if(typeof renderMathInElement==='function'){clearInterval(w);if(currentStep>=0)renderLatex()}},100)});
+</script>
+</body></html>

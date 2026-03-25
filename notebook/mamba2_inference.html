@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Mamba-2 推理生成</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0e1a;color:#e0e0e0;overflow-y:auto;min-height:100vh}
+.page-nav{background:#0d1117;display:flex;gap:0;border-bottom:2px solid #ffd54f}
+.page-nav a{padding:8px 20px;font-size:13px;color:#888;text-decoration:none;border-bottom:2px solid transparent;font-weight:600}
+.page-nav a.active{color:#ffd54f;background:#1a2040;border-bottom-color:#ffd54f}
+.page-nav a:hover:not(.active){color:#bbb;background:#151b2e}
+.header{background:linear-gradient(135deg,#1a1f3a,#1f2a4a);padding:16px 32px;border-bottom:1px solid #2a2f4a}
+.header h1{font-size:1.4em;background:linear-gradient(90deg,#ce93d8,#64b5f6);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header p{font-size:13px;color:#888;margin-top:4px}
+.content{max-width:900px;margin:0 auto;padding:24px 32px 60px}
+.step{background:#111827;border:1px solid #2a2f4a;border-radius:12px;padding:20px 24px;margin:16px 0}
+.step.active-step{border-color:#42a5f5;box-shadow:0 0 12px rgba(66,165,245,.15)}
+.step.m2-step{border-color:#ff9800;box-shadow:0 0 12px rgba(255,152,0,.1)}
+.step h3{font-size:1em;color:#90caf9;margin-bottom:8px}
+.step.m2-step h3{color:#ffb74d}
+.step p{font-size:13px;line-height:1.8;color:#bbb;margin-bottom:8px}
+.formula{background:#1a2040;border:1px solid #3a3f7a;border-radius:6px;padding:10px 14px;margin:8px 0;font-size:13px;color:#e0e0e0;overflow-x:auto}
+.code{background:#1a2040;border:1px solid #3a3f7a;border-radius:6px;padding:8px 12px;margin:6px 0;font-family:'Courier New',monospace;font-size:12px;color:#80cbc4;white-space:pre-wrap}
+.compare{display:flex;gap:16px;margin:12px 0}
+.compare>div{flex:1;background:#0d1220;border:1px solid #333;border-radius:8px;padding:12px}
+.compare h4{font-size:12px;margin-bottom:6px}
+.ref{font-size:11px;color:#78909c;font-style:italic}
+.badge{display:inline-block;background:linear-gradient(135deg,#6a1b9a,#ab47bc);color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;margin-left:6px}
+.key-diff{background:#1a1a0a;border:1px solid #ffd54f44;border-radius:8px;padding:14px;margin:12px 0}
+.key-diff h4{color:#ffd54f;font-size:13px;margin-bottom:6px}
+</style>
+</head>
+<body>
+<div class="page-nav">
+  <a href="mamba2_arch.html">① 前向传播</a>
+  <a href="mamba2_inference.html" class="active">② 推理生成</a>
+  <a href="mamba2_backprop.html">③ 反向传播</a>
+</div>
+<div class="header">
+  <h1>🚀 Mamba-2 推理生成流程</h1>
+  <p>训练好的模型如何一个字一个字地生成文本？Mamba 的推理为什么比 Transformer 高效？</p>
+</div>
+<div class="content">
+
+<div class="step">
+<h3>推理 vs 训练：核心区别</h3>
+<p>训练时，我们一次喂入完整序列 \([B, L, d_{\text{model}}]\)，<b>并行</b>处理所有 token。</p>
+<p>推理时，我们<b>一次只生成一个 token</b>，然后把它拼到序列末尾，再生成下一个——<b>自回归</b>。</p>
+<div class="code">输入: "从前有一只"
+第1步: 模型预测 → "小"    → "从前有一只小"
+第2步: 模型预测 → "猫"    → "从前有一只小猫"
+第3步: 模型预测 → "，"    → "从前有一只小猫，"
+...重复直到生成 &lt;eos&gt; 或达到最大长度</div>
+</div>
+
+<div class="step m2-step">
+<h3>⚡ Mamba 推理的杀手锏：O(1) 内存/步 <span class="badge">MAMBA 优势</span></h3>
+<p>这是 Mamba 相比 Transformer 最大的推理优势。</p>
+<div class="compare">
+<div>
+  <h4 style="color:#ef5350">Transformer 推理</h4>
+  <p>每生成一个 token，需要和<b>所有之前的 token</b> 做 Attention。</p>
+  <div class="formula">$$\text{复杂度: } O(L) \text{ 每步}$$</div>
+  <p>需要 <b>KV Cache</b> 存储所有历史 token 的 Key/Value，内存随序列长度线性增长。</p>
+  <div class="code">序列长度 1000 → KV Cache ≈ 数百MB
+序列长度 100000 → KV Cache ≈ 数十GB 💥</div>
+</div>
+<div>
+  <h4 style="color:#66bb6a">Mamba 推理</h4>
+  <p>SSM 是<b>递推</b>结构：隐状态 \(\mathbf{h}\) 已经压缩了所有历史信息。</p>
+  <div class="formula">$$\text{复杂度: } O(1) \text{ 每步}$$</div>
+  <p>只需保存一个固定大小的<b>隐状态</b>，不管序列多长，内存恒定。</p>
+  <div class="code">序列长度 1000   → 隐状态 ≈ 固定大小
+序列长度 100000 → 隐状态 ≈ 同样大小 ✓</div>
+</div>
+</div>
+</div>
+
+<div class="step">
+<h3>第1步: 初始化隐状态</h3>
+<p>推理开始前，每一层的 SSM 隐状态 \(\mathbf{h}\) 和 Conv1D 状态初始化为零：</p>
+<div class="formula">$$\mathbf{h}^{(l)} = \mathbf{0} \in \mathbb{R}^{n_{\text{heads}} \times \text{headdim} \times d_{\text{state}}} = \mathbb{R}^{32 \times 64 \times 64}$$</div>
+<div class="code">conv_state: [32层 × d_inner × d_conv] 存最近4个token
+ssm_state:  [32层 × 32heads × 64 × 64] SSM隐状态</div>
+<p>这两个状态会在生成过程中<b>逐步更新</b>，替代 Transformer 的 KV Cache。</p>
+</div>
+
+<div class="step">
+<h3>第2步: Prompt 编码（可选预填充）</h3>
+<p>如果用户给了一段开头（如"从前有一只"），先把这段 prompt 喂进模型更新隐状态：</p>
+<div class="code">for token in prompt_tokens:
+    logits, states = model.step(token, states)
+    # 不需要 logits, 只要更新 states</div>
+<p>这一步可以用训练时的并行模式加速——一次处理整个 prompt。</p>
+</div>
+
+<div class="step">
+<h3>第3步: 逐 token 生成（自回归循环）</h3>
+<p>核心循环：每步只处理<b>一个 token</b>。</p>
+<div class="code">for step in range(max_new_tokens):
+    # 1. Embedding: token_id → 向量
+    x = embedding[token_id]        # [1, 1, 1024]
+    
+    # 2. 过32层 Mamba Block (递推模式)
+    for layer in layers:
+        x, states[layer] = mamba_step(x, states[layer])
+    
+    # 3. LM Head: 向量 → 词表概率
+    logits = lm_head(norm(x))      # [1, 1, 32000]
+    
+    # 4. 采样下一个 token
+    token_id = sample(logits)
+    output.append(token_id)</div>
+</div>
+
+<div class="step m2-step">
+<h3>第4步: SSM 递推更新（每层每步）<span class="badge">核心</span></h3>
+<p>每个 Mamba Block 内部，SSM 在递推模式下执行：</p>
+<div class="formula">$$\begin{aligned} \mathbf{h}_t &= \bar{\mathbf{A}} \cdot \mathbf{h}_{t-1} + \bar{\mathbf{B}} \cdot \mathbf{x}_t \\ \mathbf{y}_t &= \mathbf{C}_t \cdot \mathbf{h}_t + \mathbf{D} \cdot \mathbf{x}_t \end{aligned}$$</div>
+<p>只需要<b>一次矩阵向量乘</b>——不需要展开成矩阵模式。</p>
+<div class="key-diff">
+<h4>训练 vs 推理：SSM 的两种模式</h4>
+<div class="code">训练 (矩阵模式 / SSD):
+  所有时间步并行 → Y = M ⊙ (QKᵀ) · V
+  利用 Tensor Core, 吞吐量高
+  复杂度: O(L²) 但 GPU 并行效率极高
+
+推理 (递推模式):
+  一次一步 → h(t) = Ā·h(t-1) + B̄·x(t)
+  只做向量运算, 不需要矩阵展开
+  复杂度: O(1) 每步, 内存恒定</div>
+<p>这就是 Mamba-2 "Structured State Space Duality" (SSD) 的精髓：<b>同一个数学公式，训练和推理用不同的计算方式</b>。</p>
+</div>
+</div>
+
+<div class="step">
+<h3>第5步: 采样策略</h3>
+<p>LM Head 输出 32000 维的 logits 后，需要从中<b>采样</b>下一个 token：</p>
+<div class="formula">$$P(y_t) = \text{softmax}\!\left(\frac{\text{logits}}{\tau}\right), \quad y_t \sim \text{TopK}(P, k)$$</div>
+<div class="code">参数说明:
+  τ (temperature):
+    τ=0.1 → 几乎确定性选最高概率 (保守)
+    τ=1.0 → 按原始概率采样 (标准)
+    τ=2.0 → 更随机, 更有创意 (激进)
+
+  top_k=50:
+    只从概率最高的前50个token中采样
+    防止选到极低概率的"垃圾"token
+
+  top_p=0.9 (nucleus sampling):
+    选累积概率达到90%的最小token集合
+    动态调整候选数量</div>
+<p>我们的 <code>chat.sh</code> 使用 <code>temperature=0.8, top_k=50</code>。</p>
+</div>
+
+<div class="step">
+<h3>第6步: 生成终止</h3>
+<p>循环在以下条件之一满足时终止：</p>
+<div class="code">1. 生成了 &lt;eos&gt; token (序列自然结束)
+2. 达到 max_new_tokens 限制 (我们设的500)
+3. 用户手动中断</div>
+<p>最后将所有生成的 token_id 通过分词器<b>解码</b>回文字：</p>
+<div class="formula">$$[1823, 945, 302, 89, 3021] \xrightarrow{\text{decode}} \text{"从前有小猫"}$$</div>
+</div>
+
+<div class="step">
+<h3>完整推理流程回顾</h3>
+<div class="formula">$$\text{"从前有"} \xrightarrow{\text{BPE}} \text{[IDs]} \xrightarrow[\text{更新 h}]{\text{prompt编码}} \xrightarrow[\text{采样}]{\text{自回归循环}} \text{token} \xrightarrow{\text{decode}} \text{"从前有一只小猫"}$$</div>
+<p>Mamba 推理的三大优势：</p>
+<div class="code">1. O(1) 内存/步 — 无需 KV Cache, 序列再长内存不增长
+2. 恒定计算量/步 — 不像 Attention 随序列变慢
+3. 训练/推理数学等价 — SSD 对偶性保证结果一致</div>
+<p class="ref">📚 d2l 第9.4节 - 循环神经网络生成；第10.7节 - Seq2Seq + 自回归</p>
+</div>
+
+</div>
+<script>
+document.addEventListener('DOMContentLoaded',()=>{
+  if(typeof renderMathInElement==='function'){
+    renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'\\(',right:'\\)',display:false}],throwOnError:false});
+  } else {
+    const w=setInterval(()=>{if(typeof renderMathInElement==='function'){clearInterval(w);renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'\\(',right:'\\)',display:false}],throwOnError:false})}},100);
+  }
+});
+</script>
+</body></html>

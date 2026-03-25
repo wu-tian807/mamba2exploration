@@ -20,3 +20,4 @@ data/corpus_v3.txt
 *.egg
 *.parquet
 checkpoints/final_v2_83M.pt
+notebook/d2l-zh-pytorch.pdf
